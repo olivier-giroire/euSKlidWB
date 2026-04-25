@@ -1,0 +1,5 @@
+euSKlidWB V0.9.11 MULTISELECT DELETE
+- Free-point override remapped from Shift to Ctrl.
+- Shift+click selects/unselects construction entities in the active euSKlid sketch.
+- Delete/Suppr removes selected construction entities and leaves other entities intact.
+- Selection overlay uses existing selected-anchor rendering.

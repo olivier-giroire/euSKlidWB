@@ -1,0 +1,301 @@
+msgid ""
+msgstr ""
+"Language: fr\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "euSKlid"
+msgstr "euSKlid"
+
+msgid "euSKlid planar sketching workbench for FreeCAD"
+msgstr "Atelier de dessin planaire inspiré d'euSKlide pour FreeCAD"
+
+msgid "Sketch"
+msgstr "Sketch"
+
+msgid "Lines"
+msgstr "Lignes"
+
+msgid "Circles"
+msgstr "Cercles"
+
+msgid "Path"
+msgstr "Contour"
+
+msgid "New Sketch"
+msgstr "Nouveau sketch"
+
+msgid "Create a new euSKlid sketch"
+msgstr "Créer un nouveau sketch euSKlid"
+
+msgid "2 Anchors"
+msgstr "2 ancres"
+
+msgid "Create an infinite line through 2 anchors"
+msgstr "Créer une droite infinie passant par 2 ancres"
+
+msgid "// U"
+msgstr "// U"
+
+msgid "Create lines parallel to U. Positive values go toward +V."
+msgstr "Créer des droites parallèles à U. Les valeurs positives vont vers +V."
+
+msgid "// V"
+msgstr "// V"
+
+msgid "Create lines parallel to V. Positive values go toward +U."
+msgstr "Créer des droites parallèles à V. Les valeurs positives vont vers +U."
+
+msgid "// Ref"
+msgstr "// Réf"
+
+msgid "Pick a reference, see positive-side arrow, then enter signed distances."
+msgstr "Choisir une référence, voir la flèche du côté positif, puis saisir les distances signées."
+
+msgid "Grid"
+msgstr "Grille"
+
+msgid "Create a multi-series grid centered on a picked point"
+msgstr "Créer une grille multi-séries centrée sur un point choisi"
+
+msgid "Center / Radius"
+msgstr "Centre / Rayon"
+
+msgid "Construction circle by center and radius"
+msgstr "Cercle de construction par centre et rayon"
+
+msgid "Center / Anchor"
+msgstr "Centre / Ancre"
+
+msgid "Construction circle by center and anchor (point, line tangency, circle tangency)"
+msgstr "Cercle de construction par centre et ancre (point, tangence ligne, tangence cercle)"
+
+msgid "3 Anchors"
+msgstr "3 ancres"
+
+msgid "Construction circle through 3 anchors"
+msgstr "Cercle de construction passant par 3 ancres"
+
+msgid "2 Anchors / Radius"
+msgstr "2 ancres / Rayon"
+
+msgid "Construction circle through 2 anchors with given radius"
+msgstr "Cercle de construction passant par 2 ancres avec rayon donné"
+
+msgid "Center / tg"
+msgstr "Centre / tg"
+
+msgid "Center then tangent reference (line or circle). Multiple solutions are chosen graphically."
+msgstr "Centre puis référence tangente (ligne ou cercle). Les solutions multiples sont choisies graphiquement."
+
+msgid "2 Tg / Radius"
+msgstr "2 tg / Rayon"
+
+msgid "Two tangent references (line/circle) and a radius. Multiple solutions are chosen graphically."
+msgstr "Deux références tangentes (ligne/cercle) et un rayon. Les solutions multiples sont choisies graphiquement."
+
+msgid "Start Path"
+msgstr "Démarrer contour"
+
+msgid "Start a new path"
+msgstr "Démarrer un nouveau contour"
+
+msgid "Close Path"
+msgstr "Fermer contour"
+
+msgid "Close and terminate the current path"
+msgstr "Fermer et terminer le contour courant"
+
+msgid "End Path"
+msgstr "Terminer contour"
+
+msgid "End the current path"
+msgstr "Terminer le contour courant"
+
+msgid "Export Path to Sketcher"
+msgstr "Exporter le contour vers Sketcher"
+
+msgid "Export the current path to Sketcher"
+msgstr "Exporter le contour courant vers Sketcher"
+
+msgid "Export Construction to Sketcher"
+msgstr "Exporter la construction vers Sketcher"
+
+msgid "Export all entities to native Sketcher"
+msgstr "Exporter toutes les entités vers Sketcher natif"
+
+msgid "End Sketch"
+msgstr "Terminer sketch"
+
+msgid "Stop the active euSKlid tool"
+msgstr "Arrêter l'outil euSKlid actif"
+
+msgid "Settings"
+msgstr "Paramètres"
+
+msgid "euSKlid settings"
+msgstr "Paramètres euSKlid"
+
+msgid "Enter 3 points, one per line, format: x y z\nP0 = origin\nP1 = local U direction\nP2 = plane orientation"
+msgstr "Saisir 3 points, un par ligne, format : x y z\nP0 = origine\nP1 = direction U locale\nP2 = orientation du plan"
+
+msgid "Exactly 3 points are required."
+msgstr "Exactement 3 points sont requis."
+
+msgid "Invalid 3-point plane definition."
+msgstr "Définition de plan par 3 points invalide."
+
+msgid "Invalid distance series.\nExamples:\n0 10 20\n0 ; repeat 10 [0, 1, 2.5] step 7"
+msgstr "Série de distances invalide.\nExemples :\n0 10 20\n0 ; repeat 10 [0, 1, 2.5] step 7"
+
+msgid "NB series"
+msgstr "Nb séries"
+
+msgid "count"
+msgstr "nombre"
+
+msgid "step"
+msgstr "pas"
+
+msgid "angle"
+msgstr "angle"
+
+msgid "euSKlid Settings"
+msgstr "Paramètres euSKlid"
+
+msgid "GUI"
+msgstr "Interface"
+
+msgid "Work"
+msgstr "Travail"
+
+msgid "Feeling"
+msgstr "Ressenti"
+
+msgid "Reset"
+msgstr "Réinitialiser"
+
+msgid "Apply"
+msgstr "Appliquer"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "U/V Frame"
+msgstr "Repère U/V"
+
+msgid "Size (px)"
+msgstr "Taille (px)"
+
+msgid "Arrow size"
+msgstr "Taille flèche"
+
+msgid "Thickness"
+msgstr "Épaisseur"
+
+msgid "Direction Arrows"
+msgstr "Flèches de direction"
+
+msgid "Color"
+msgstr "Couleur"
+
+msgid "Transparency"
+msgstr "Transparence"
+
+msgid "Length"
+msgstr "Longueur"
+
+msgid "Step"
+msgstr "Pas"
+
+msgid "Count"
+msgstr "Nombre"
+
+msgid "Points"
+msgstr "Points"
+
+msgid "Size"
+msgstr "Size"
+
+msgid "Selected"
+msgstr "Sélectionné"
+
+msgid "Snap"
+msgstr "Snap"
+
+msgid "Fixed"
+msgstr "Fixe"
+
+msgid "Hover"
+msgstr "Survol"
+
+msgid "Markers"
+msgstr "Marqueurs"
+
+msgid "Construction"
+msgstr "Construction"
+
+msgid "Highlight"
+msgstr "Surbrillance"
+
+msgid "Current path"
+msgstr "Contour courant"
+
+msgid "Candidate path"
+msgstr "Contour candidat"
+
+msgid "Closed path"
+msgstr "Contour fermé"
+
+msgid "Snap threshold (px)"
+msgstr "Seuil de snap (px)"
+
+msgid "Autogrid"
+msgstr "Autogrille"
+
+msgid "Refresh interval (ms)"
+msgstr "Intervalle de rafraîchissement (ms)"
+
+msgid "Console messages"
+msgstr "Messages console"
+
+msgid "Help messages"
+msgstr "Messages d'aide"
+
+msgid "You can't touch this !"
+msgstr "Sélection inutilisable !"
+
+msgid "Expected: reference line"
+msgstr "Attendu : droite de référence"
+
+msgid "Expected: snap point â free point"
+msgstr "Expected: snap point â free point"
+
+msgid "Expected: snap point â tangent circle â circle â free point"
+msgstr "Expected: snap point â tangent circle â circle â free point"
+
+msgid "Expected: snap point â tangent anchor â line â circle â free point"
+msgstr "Expected: snap point â tangent anchor â line â circle â free point"
+
+msgid "Expected: snap point → free point"
+msgstr "Attendu : point d'accroche → point libre"
+
+msgid "Expected: snap point → tangent circle → circle → free point"
+msgstr "Attendu : point d'accroche → cercle tangent → cercle → point libre"
+
+msgid "Expected: snap point → tangent anchor → line → circle → free point"
+msgstr "Attendu : point d'accroche → ancre tangente → ligne → cercle → point libre"
+
+msgid "Open Sketch"
+msgstr "Ouvrir sketch"
+
+msgid "Open an existing euSKlid sketch from the active document"
+msgstr "Ouvrir un sketch euSKlid existant du document actif"
+
+msgid "No active document."
+msgstr "Aucun document actif."
+
+msgid "No euSKlid sketch found in the active document."
+msgstr "Aucun sketch euSKlid trouvé dans le document actif."

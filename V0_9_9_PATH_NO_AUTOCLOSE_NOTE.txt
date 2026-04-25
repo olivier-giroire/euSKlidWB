@@ -1,0 +1,4 @@
+euSKlidWB V0.9.9 PATH NO AUTOCLOSE
+- Removes implicit Path auto-close when clicking near the starting point.
+- Contours now close only through the explicit Close Path command.
+- Keeps the exit cleanup fix: active handlers and dynamic path markers are stopped on workbench exit.

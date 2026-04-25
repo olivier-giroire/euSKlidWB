@@ -1,0 +1,9 @@
+euSKlidWB V1.0.3 SEQUENCE PARSER FINAL
+- Base retained: V1.0.2 EXPORT_SEQUENCE_EQUAL.
+- Distance list separator is comma only; spaces around commas are optional.
+- Sequence syntax uses parentheses: repeat 13 (0,1) origin 0 step 2.5.
+- Sequence must start with repeat/rep/r only.
+- Origin aliases: origin/org/o.
+- Step aliases: step/stp/s.
+- Mixed expressions are supported: repeat 13 (0,1) org 0 step 2.5, repeat 6 (0,2) o 40 s 8.
+- Old [] sequence notation and stp-as-sequence-start are intentionally rejected.

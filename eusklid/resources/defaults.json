@@ -1,0 +1,136 @@
+{
+  "gui": {
+    "uv": {
+      "size": 150,
+      "arrow_size": 30,
+      "thickness": 3
+    },
+    "arrows": {
+      "color": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "alpha": 30,
+      "thickness": 5,
+      "length": 60,
+      "arrow_size": 10,
+      "step": 30,
+      "count": 15
+    },
+    "points": {
+      "size": 20,
+      "alpha": 30,
+      "colors": {
+        "selected": [
+          0.2,
+          0.4,
+          1.0
+        ],
+        "snap": [
+          0.2,
+          1.0,
+          0.2
+        ],
+        "fixed": [
+          1.0,
+          1.0,
+          0.0
+        ],
+        "hover": [
+          1.0,
+          0.0,
+          1.0
+        ],
+        "marker": [
+          1.0,
+          0.5,
+          0.0
+        ]
+      }
+    }
+  },
+  "construction": {
+    "lines": {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "thickness": 2,
+      "alpha": 0
+    },
+    "circles": {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "thickness": 2,
+      "alpha": 0
+    },
+    "grids": {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "thickness": 2,
+      "alpha": 0
+    },
+    "polygons": {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "thickness": 2,
+      "alpha": 0
+    }
+  },
+  "path": {
+    "current": {
+      "color": [
+        1.0,
+        0.5,
+        0.0
+      ],
+      "thickness": 5,
+      "alpha": 0
+    },
+    "candidate": {
+      "color": [
+        0.6,
+        1.0,
+        0.6
+      ],
+      "thickness": 3,
+      "alpha": 0
+    },
+    "closed": {
+      "color": [
+        0.0,
+        0.45,
+        0.0
+      ],
+      "thickness": 6,
+      "alpha": 0
+    }
+  },
+  "feeling": {
+    "snap_threshold": 20,
+    "refresh_interval_ms": 120,
+    "autogrid": "off",
+    "console_messages": false,
+    "help_messages": false
+  },
+  "highlight": {
+    "color": [
+      1.0,
+      0.8,
+      0.1
+    ],
+    "thickness": 3,
+    "alpha": 40
+  }
+}

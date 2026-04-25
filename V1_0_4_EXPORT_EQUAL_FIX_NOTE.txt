@@ -1,0 +1,5 @@
+euSKlidWB V1.0.4 EXPORT EQUAL FIX
+- Adds a re-entry guard to indicator._remove_objs to avoid recursive document-change cleanup loops.
+- Export sequence grouping is less fragile: grouped by series/block/pattern, not by exact exported segment length.
+- Export now logs sequence-constraint diagnostics when Console messages are enabled.
+- Distance constraint creation tries multiple Sketcher signatures.

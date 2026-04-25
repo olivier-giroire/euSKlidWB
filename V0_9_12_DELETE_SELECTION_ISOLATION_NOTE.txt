@@ -1,0 +1,6 @@
+euSKlidWB V0.9.12 DELETE SELECTION ISOLATION
+- Internal euSKlid entity selection is now isolated from FreeCAD object selection.
+- Open Sketch/New Sketch no longer leave the full sketch object selected in FreeCAD.
+- Shift+click clears FreeCAD selection and only toggles internal euSKlid entity selection.
+- Delete/Suppr clears FreeCAD selection before deleting selected internal entities.
+- This prevents FreeCAD native Delete from deleting the whole sketch object/entities unexpectedly.

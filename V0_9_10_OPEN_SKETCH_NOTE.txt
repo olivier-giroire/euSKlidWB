@@ -1,0 +1,5 @@
+euSKlidWB V0.9.10 OPEN SKETCH
+- Adds Open Sketch command under New Sketch in toolbar and Sketch menu.
+- Open Sketch lists existing euSKlid sketches in the active document.
+- If only one sketch exists, it opens directly.
+- Opening reselects the sketch and restores its U/V frame.
