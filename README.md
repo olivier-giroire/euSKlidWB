@@ -16,7 +16,7 @@ Donc en gros, voila : le sketcher paramétrique, c'est top, mais s'il peut être
 par l'instinct, c'est mieux.
 Et pour l'auteur (ce vieux con qui écrit des trucs que personne ne lira jamais), le
 meilleur du mieux était représenté par le sketcher de l'un des mastodontes de la
-modélisation de l'époques, "mistérieusement" disparu à l'occasion du rachat de son
+modélisation de l'époques, "mystérieusement" disparu à l'occasion du rachat de son
 éditeur (français), par son concurrent direct (français) en 1999 ... voila pour le nom.
 
 Et sinon, accessoirement, c'est sa premire expérience de "vibe coding", parce qu'un

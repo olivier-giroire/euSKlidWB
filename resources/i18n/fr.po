@@ -7,7 +7,7 @@ msgid "euSKlid"
 msgstr "euSKlid"
 
 msgid "euSKlid planar sketching workbench for FreeCAD"
-msgstr "Atelier de dessin planaire inspiré d'euSKlide pour FreeCAD"
+msgstr "Atelier de dessin planaire pour FreeCAD"
 
 msgid "Sketch"
 msgstr "Sketch"
