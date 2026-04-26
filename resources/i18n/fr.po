@@ -7,7 +7,7 @@ msgid "euSKlid"
 msgstr "euSKlid"
 
 msgid "euSKlid planar sketching workbench for FreeCAD"
-msgstr "Atelier de dessin planaire pour FreeCAD"
+msgstr "Atelier de dessin planaire inspiré d'euSKlide pour FreeCAD"
 
 msgid "Sketch"
 msgstr "Sketch"
@@ -299,3 +299,9 @@ msgstr "Aucun document actif."
 
 msgid "No euSKlid sketch found in the active document."
 msgstr "Aucun sketch euSKlid trouvé dans le document actif."
+
+msgid "Reopen contour in active sketch"
+msgstr "Réouvrir le contour dans le sketch actif"
+
+msgid "Re-export the closed euSKlid contour into the active Sketcher sketch, replacing only the previous euSKlid export"
+msgstr "Réexporter le contour euSKlid fermé dans le sketch Sketcher actif, en remplaçant seulement l’export euSKlid précédent"

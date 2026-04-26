@@ -4,28 +4,7 @@ from .utils import parse_distance_series
 from .core.i18n import tr
 
 def ask_three_points_plane():
-    text, ok = QtWidgets.QInputDialog.getMultiLineText(
-        None,tr("euSKlid"),
-        tr("Enter 3 points, one per line, format: x y z\nP0 = origin\nP1 = local U direction\nP2 = plane orientation"),
-        "0 0 0\n100 0 0\n0 100 0"
-    )
-    if not ok:
-        return None
-    lines=[ln.strip() for ln in text.splitlines() if ln.strip()]
-    if len(lines)!=3:
-        QtWidgets.QMessageBox.warning(None,tr("euSKlid"),tr("Exactly 3 points are required."))
-        return None
-    try:
-        pts=[]
-        for ln in lines:
-            vals=[float(x) for x in ln.replace(","," ").split()]
-            if len(vals)!=3:
-                raise ValueError
-            pts.append(tuple(vals))
-        return SketchPlane.from_three_points(pts[0],pts[1],pts[2])
-    except Exception:
-        QtWidgets.QMessageBox.warning(None,tr("euSKlid"),tr("Invalid 3-point plane definition."))
-        return None
+    return SketchPlane.XY()
 
 def ask_distance_series(title):
     text, ok = QtWidgets.QInputDialog.getText(None,tr("euSKlid"),title)

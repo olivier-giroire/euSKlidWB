@@ -1,0 +1,7 @@
+euSKlidWB V1.1.4 — Tagged Sketcher export
+
+- Path export now tags the Sketcher geometry and constraints it creates using a JSON property on the target Sketcher object.
+- Re-exporting into an existing or active Sketcher object removes only the previous euSKlid-tagged export before writing the new contour.
+- User-created Sketcher geometry and constraints are left untouched.
+- If a Sketcher object is currently in edit mode, Path export targets it directly.
+- Existing sequence constraints, tangency/collinearity policy and XY-only behavior are preserved.

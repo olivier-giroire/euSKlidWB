@@ -1,0 +1,7 @@
+euSKlid V1.1.4 menu contour patch
+
+- Adds an explicit command in the Path/Contour menu:
+  Reopen contour in active sketch
+- The command calls the tagged sketch export path.
+- If a Sketcher sketch is active, the closed euSKlid contour is re-exported there.
+- Only the previous tagged euSKlid export is replaced; manual Sketcher geometry is preserved.

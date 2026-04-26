@@ -18,7 +18,7 @@ class SketchData:
                 ents.append(LineEntity2D.from_dict(item))
             elif item.get("kind")=="circle":
                 ents.append(CircleEntity2D.from_dict(item))
-        return cls(plane=SketchPlane.from_dict(d.get("plane",SketchPlane.XY().to_dict())), entities=ents)
+        return cls(plane=SketchPlane.XY(), entities=ents)
 
 def load_data(text):
     if not text:

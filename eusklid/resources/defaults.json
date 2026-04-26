@@ -1,10 +1,5 @@
 {
   "gui": {
-    "uv": {
-      "size": 150,
-      "arrow_size": 30,
-      "thickness": 3
-    },
     "arrows": {
       "color": [
         1.0,

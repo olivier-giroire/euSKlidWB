@@ -21,21 +21,13 @@ class SketchPlane:
     @classmethod
     def XY(cls): return cls((0,0,0),(1,0,0),(0,1,0),"XY")
     @classmethod
-    def XZ(cls): return cls((0,0,0),(1,0,0),(0,0,1),"XZ")
+    def XZ(cls): return cls.XY()
     @classmethod
-    def YZ(cls): return cls((0,0,0),(0,1,0),(0,0,1),"YZ")
+    def YZ(cls): return cls.XY()
 
     @classmethod
     def from_three_points(cls,p0,p1,p2):
-        P0=App.Vector(*p0); P1=App.Vector(*p1); P2=App.Vector(*p2)
-        u=P1-P0; w=P2-P0
-        if u.Length == 0 or w.Length == 0:
-            raise ValueError("Degenerate points.")
-        n=u.cross(w)
-        if n.Length == 0:
-            raise ValueError("The three points are collinear.")
-        v=n.cross(u)
-        return cls((P0.x,P0.y,P0.z),(u.x,u.y,u.z),(v.x,v.y,v.z),"3PTS")
+        return cls.XY()
 
     def uv_to_world(self, uv):
         u,v = uv
@@ -56,4 +48,4 @@ class SketchPlane:
 
     @classmethod
     def from_dict(cls,d):
-        return cls(tuple(d["origin"]), tuple(d["u"]), tuple(d["v"]), d.get("name","Custom"))
+        return cls.XY()

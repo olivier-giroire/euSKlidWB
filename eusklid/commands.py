@@ -76,18 +76,18 @@ class CmdLine2Pts(_BaseCmd):
     def Activated(self): start_line_2pts_session(construction=True)
 
 class CmdParallelU(_BaseCmd):
-    def GetResources(self): return {"MenuText":tr("// U"),"ToolTip":tr("Create lines parallel to U. Positive values go toward +V.")}
+    def GetResources(self): return {"MenuText":tr("// X"),"ToolTip":tr("Create lines parallel to X. Positive values go toward +Y.")}
     def Activated(self):
-        values = ask_distance_series("Distances parallel to U (space separated). Positive values go toward +V.")
+        values = ask_distance_series("Distances parallel to X (space separated). Positive values go toward +Y.")
         if values is None: return
-        create_parallel_axis("U", values, construction=True)
+        create_parallel_axis("X", values, construction=True)
 
 class CmdParallelV(_BaseCmd):
-    def GetResources(self): return {"MenuText":tr("// V"),"ToolTip":tr("Create lines parallel to V. Positive values go toward +U.")}
+    def GetResources(self): return {"MenuText":tr("// Y"),"ToolTip":tr("Create lines parallel to Y. Positive values go toward +X.")}
     def Activated(self):
-        values = ask_distance_series("Distances parallel to V (space separated). Positive values go toward +U.")
+        values = ask_distance_series("Distances parallel to Y (space separated). Positive values go toward +X.")
         if values is None: return
-        create_parallel_axis("V", values, construction=True)
+        create_parallel_axis("Y", values, construction=True)
 
 class CmdParallelRef(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("// Ref"),"ToolTip":tr("Pick a reference, see positive-side arrow, then enter signed distances.")}
@@ -120,13 +120,13 @@ class CmdLinePointTgCircle(_BaseCmd):
 
 class CmdLineParallelUTg(_BaseCmd):
     def GetResources(self):
-        return {"MenuText":"//U + Tg","ToolTip":"Line parallel to U tangent to a circle"}
+        return {"MenuText":"//X + Tg","ToolTip":"Line parallel to X tangent to a circle"}
     def Activated(self):
         start_line_parallel_u_tangent_circle_session(construction=True)
 
 class CmdLineParallelVTg(_BaseCmd):
     def GetResources(self):
-        return {"MenuText":"//V + Tg","ToolTip":"Line parallel to V tangent to a circle"}
+        return {"MenuText":"//Y + Tg","ToolTip":"Line parallel to Y tangent to a circle"}
     def Activated(self):
         start_line_parallel_v_tangent_circle_session(construction=True)
 
@@ -224,6 +224,15 @@ class CmdPathExport(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("Export Path to Sketcher"),"ToolTip":tr("Export the current path to Sketcher")}
     def Activated(self): path_export()
 
+class CmdPathReopenContour(_BaseCmd):
+    def GetResources(self):
+        return {
+            "MenuText": tr("Reopen contour"),
+            "ToolTip": tr("Reopen the last closed euSKlid contour without exporting it"),
+        }
+    def Activated(self):
+        path_reopen_contour()
+
 class CmdExportSketcher(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("Export Construction to Sketcher"),"ToolTip":tr("Export all entities to native Sketcher")}
     def Activated(self): export_to_native_sketch(get_or_create_euclid_sketch())
@@ -277,6 +286,7 @@ def register_commands():
     Gui.addCommand("euSKlid_PathClose", CmdPathClose())
     Gui.addCommand("euSKlid_PathEnd", CmdPathEnd())
     Gui.addCommand("euSKlid_PathExport", CmdPathExport())
+    Gui.addCommand("euSKlid_PathReopenContour", CmdPathReopenContour())
     Gui.addCommand("euSKlid_Undo", CmdUndo())
     Gui.addCommand("euSKlid_ExportSketcher", CmdExportSketcher())
     Gui.addCommand("euSKlid_EndSketch", CmdEndSketch())

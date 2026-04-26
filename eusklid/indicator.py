@@ -206,14 +206,19 @@ def _safe_import_draft():
         return None
 
 def _set_fc_axis_cross_visible(visible):
-    try:
-        if Gui.ActiveDocument is not None:
-            Gui.ActiveDocument.ActiveView.setAxisCross(bool(visible))
-    except Exception:
-        pass
+    # XY-only policy: euSKlid does not hide/restore the FreeCAD X/Y/Z axis cross.
+    return
 
 def _remove_objs(objs):
+    """Reset Python overlay state without touching FreeCAD document objects.
+
+    FreeCAD can recursively re-enter Python when transient objects are removed
+    or hidden from event/refresh callbacks. For now, indicator cleanup is
+    document-side no-op: euSKlid forgets the overlay list and avoids recursive
+    document mutation.
+    """
     return []
+
 
 def _pixels_to_fontsize(px):
     try:
@@ -788,134 +793,11 @@ def show_selected_anchors(plane, anchors):
 
 
 def show_uv_frame(plane, origin_uv=(0.0, 0.0), axis_len=140.0, head=35.0, from_refresh=False):
+    """Compatibility no-op: the U/V frame overlay has been removed."""
     global _FRAME_OBJECTS, _FRAME_STATE
-
-    _FRAME_STATE = {
-        "plane": plane,
-        "origin_uv": origin_uv,
-    }
-    if not from_refresh:
-        _ensure_refresh_timer()
-
-    clear_frame()
-    _set_fc_axis_cross_visible(False)
-
-    Draft = _safe_import_draft()
-    if Draft is None or App.ActiveDocument is None:
-        return
-
-    from .math2d import normalize, perp, scale, add
-
-    doc = App.ActiveDocument
-    ensure_euclid_groups(doc)
-
-    uv_cfg = _cfg_uv()
-
-    FRAME_PX = float(uv_cfg.get("size", 150.0))
-    ARROW_PX = float(uv_cfg.get("arrow_size", 30.0))
-    LABEL_PX = max(10.0, FRAME_PX * 0.12)
-    LINE_W = int(uv_cfg.get("thickness", 3))
-
-    axis_len = _pixels_to_world(plane, origin_uv, FRAME_PX)
-    head = _pixels_to_world(plane, origin_uv, ARROW_PX)
-    font_size = _pixels_to_fontsize(LABEL_PX)
-
-    def W(uv):
-        return App.Vector(*plane.uv_to_world(uv))
-
-    udir = (1.0, 0.0)
-    vdir = (0.0, 1.0)
-    upn = normalize(perp(udir))
-    vpn = normalize(perp(vdir))
-
-    o = origin_uv
-    u_tip = add(o, scale(udir, axis_len))
-    v_tip = add(o, scale(vdir, axis_len))
-
-    u_h1 = add(u_tip, add(scale(udir, -head), scale(upn, head * 0.55)))
-    u_h2 = add(u_tip, add(scale(udir, -head), scale(upn, -head * 0.55)))
-
-    v_h1 = add(v_tip, add(scale(vdir, -head), scale(vpn, head * 0.55)))
-    v_h2 = add(v_tip, add(scale(vdir, -head), scale(vpn, -head * 0.55)))
-
-    objs = []
-
-    for a, b in [(o, u_tip), (u_tip, u_h1), (u_tip, u_h2)]:
-        obj = Draft.make_line(W(a), W(b))
-        _group_frame(obj)
-        try:
-            obj.ViewObject.LineWidth = LINE_W
-            obj.ViewObject.LineColor = (1.0, 0.0, 0.0)
-            obj.ViewObject.Selectable = False
-        except Exception:
-            pass
-        objs.append(obj)
-
-    for a, b in [(o, v_tip), (v_tip, v_h1), (v_tip, v_h2)]:
-        obj = Draft.make_line(W(a), W(b))
-        _group_frame(obj)
-        try:
-            obj.ViewObject.LineWidth = LINE_W
-            obj.ViewObject.LineColor = (0.0, 1.0, 0.0)
-            obj.ViewObject.Selectable = False
-        except Exception:
-            pass
-        objs.append(obj)
-
-
-    # --- tags U / V comme glyphes géométriques screen-scaled ---
-    try:
-        TAG_PX = 18.0
-        tag = _pixels_to_world(plane, origin_uv, TAG_PX)
-        half = tag * 0.5
-
-        # base U
-        u_base = add(u_tip, scale(udir, head * 1.25))
-        ux, uy = u_base
-
-        u_segments = [
-            ((ux - half * 0.45, uy + half * 0.50), (ux - half * 0.45, uy - half * 0.50)),
-            ((ux - half * 0.45, uy - half * 0.50), (ux + half * 0.45, uy - half * 0.50)),
-            ((ux + half * 0.45, uy + half * 0.50), (ux + half * 0.45, uy - half * 0.50)),
-        ]
-
-        for i, (a_uv, b_uv) in enumerate(u_segments):
-            obj = Draft.make_line(W(a_uv), W(b_uv))
-            _group_frame(obj)
-            try:
-                obj.ViewObject.LineWidth = LINE_W
-                obj.ViewObject.LineColor = (1.0, 0.0, 0.0)
-                obj.ViewObject.Selectable = False
-            except Exception:
-                pass
-            objs.append(obj)
-
-        # base V
-        v_base = add(v_tip, scale(vdir, head * 1.25))
-        vx, vy = v_base
-
-        v_segments = [
-            ((vx - half * 0.45, vy + half * 0.50), (vx, vy - half * 0.50)),
-            ((vx, vy - half * 0.50), (vx + half * 0.45, vy + half * 0.50)),
-        ]
-
-        for i, (a_uv, b_uv) in enumerate(v_segments):
-            obj = Draft.make_line(W(a_uv), W(b_uv))
-            _group_frame(obj)
-            try:
-                obj.ViewObject.LineWidth = LINE_W
-                obj.ViewObject.LineColor = (0.0, 1.0, 0.0)
-                obj.ViewObject.Selectable = False
-            except Exception:
-                pass
-            objs.append(obj)
-
-    except Exception as e:
-        print("UV glyph error:", e)
-
-    _FRAME_OBJECTS = objs
-    _set_fc_axis_cross_visible(False)
-    doc.recompute()
+    _FRAME_STATE = None
+    _FRAME_OBJECTS = []
+    return None
 
 def show_arrow(plane, origin_uv, direction_uv, length=80.0, head=20.0):
     global _ARROW_OBJECTS, _ARROW_STATE

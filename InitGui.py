@@ -72,6 +72,7 @@ class euSKlidWorkbench(Gui.Workbench):
             "euSKlid_PathClose",
             "euSKlid_PathEnd",
             "euSKlid_PathExport",
+            "euSKlid_PathReopenContour",
         ])
 
     def Activated(self):
@@ -102,7 +103,6 @@ class euSKlidWorkbench(Gui.Workbench):
                 pass
 
             if Gui.ActiveDocument is not None:
-                Gui.ActiveDocument.ActiveView.setAxisCross(True)
                 Gui.ActiveDocument.ActiveView.redraw()
         except Exception:
             pass

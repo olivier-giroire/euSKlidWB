@@ -34,6 +34,7 @@ from .tools.path_tools import (
     new_path_session,
     close_path_session,
     export_path_to_sketcher,
+    reopen_closed_path,
     stop_path_session,
     undo_path_session,
     has_active_path_session,
@@ -83,9 +84,8 @@ def clear_all_indicators():
 
 
 def show_local_frame(sketch_obj=None):
+    """Legacy entry point: XY-only euSKlid has no U/V frame overlay."""
     sketch_obj = sketch_obj or get_or_create_euclid_sketch()
-    plane = get_data(sketch_obj).plane
-    indicator.show_uv_frame(plane, origin_uv=(0.0, 0.0), axis_len=140.0, head=35.0)
     try:
         set_active_sketch(sketch_obj)
     except Exception:
@@ -94,7 +94,6 @@ def show_local_frame(sketch_obj=None):
         start_selection_delete_handler()
     except Exception:
         pass
-
 
 def get_or_create_euclid_sketch():
     doc = App.ActiveDocument
@@ -169,11 +168,6 @@ def open_eusklid_sketch():
         except Exception:
             pass
 
-    try:
-        data = get_data(obj)
-        indicator.show_uv_frame(data.plane, origin_uv=(0.0, 0.0))
-    except Exception:
-        pass
 
     try:
         if Gui.ActiveDocument is not None:
@@ -194,10 +188,6 @@ def create_sketch_on_plane(plane, name):
         doc = App.newDocument()
     ensure_euclid_groups(doc)
     obj = create_sketch(doc, name=name, plane=plane)
-    try:
-        indicator.show_uv_frame(plane, origin_uv=(0.0, 0.0), axis_len=140.0, head=35.0)
-    except Exception:
-        pass
     try:
         orient_view_to_plane(plane)
     except Exception:
@@ -289,8 +279,8 @@ def orient_view_to_plane(plane):
 
 def _axis_reference_candidates(sketch_obj):
     return [
-        {"kind": "axis", "axis": "U", "origin": (0.0, 0.0), "direction": (1.0, 0.0)},
-        {"kind": "axis", "axis": "V", "origin": (0.0, 0.0), "direction": (0.0, 1.0)},
+        {"kind": "axis", "axis": "X", "origin": (0.0, 0.0), "direction": (1.0, 0.0)},
+        {"kind": "axis", "axis": "Y", "origin": (0.0, 0.0), "direction": (0.0, 1.0)},
     ]
 
 
@@ -312,14 +302,15 @@ def _pick_reference_line(sketch_obj, uv, tol=None):
 def create_parallel_axis(axis, values, construction=True, sketch_obj=None):
     sketch_obj = sketch_obj or get_or_create_euclid_sketch()
     data = get_data(sketch_obj)
-    if axis == "U":
+    axis = "X" if axis in ("U", "X") else "Y"
+    if axis == "X":
         direction = (1.0, 0.0)
         for d in values:
-            data.entities.append(LineEntity2D(origin=(0.0, d), direction=direction, construction=construction, meta={"mode": "parallel-u"}))
+            data.entities.append(LineEntity2D(origin=(0.0, d), direction=direction, construction=construction, meta={"mode": "parallel-x"}))
     else:
         direction = (0.0, 1.0)
         for d in values:
-            data.entities.append(LineEntity2D(origin=(d, 0.0), direction=direction, construction=construction, meta={"mode": "parallel-v"}))
+            data.entities.append(LineEntity2D(origin=(d, 0.0), direction=direction, construction=construction, meta={"mode": "parallel-y"}))
     set_data(sketch_obj, data)
     App.ActiveDocument.recompute()
     try:
@@ -328,7 +319,6 @@ def create_parallel_axis(axis, values, construction=True, sketch_obj=None):
         pass
     show_local_frame(sketch_obj)
     return sketch_obj
-
 
 def origin_mode_message(mode_name):
     QtWidgets.QMessageBox.information(None, "euSKlid", f"Origin mode '{mode_name}' is not implemented yet.")
@@ -375,6 +365,10 @@ def path_export():
     export_path_to_sketcher()
 
 
+def path_reopen_contour():
+    reopen_closed_path()
+
+
 def end_sketch():
 
     stop_active_session()
@@ -391,7 +385,6 @@ def end_sketch():
         pass
     try:
         if Gui.ActiveDocument is not None:
-            Gui.ActiveDocument.ActiveView.setAxisCross(True)
             Gui.ActiveDocument.ActiveView.redraw()
     except Exception:
         pass

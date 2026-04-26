@@ -1,2 +1,16 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+
+# FreeCAD backups / autosaves
+*.FCStd1
+*.FCBak
+*.FCStd.lock
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*~

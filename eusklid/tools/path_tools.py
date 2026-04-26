@@ -1,5 +1,7 @@
 
 import math
+import json
+import time
 
 import FreeCAD as App
 import FreeCADGui as Gui
@@ -13,6 +15,149 @@ from ..core import logging as elog
 from ..qt_compat import QtWidgets
 
 
+
+
+# Sketcher tagging for euSKlid exports.
+# Geometry objects in Sketcher do not carry custom properties reliably, so the
+# tag is stored on the target Sketcher object as JSON. The stored indices allow
+# a later export to remove only the geometry/constraints created by euSKlid,
+# leaving user geometry untouched.
+_EUSKLID_EXPORT_PROP = "EuSKlidExportTag"
+_EUSKLID_EXPORT_GROUP = "euSKlid"
+_EUSKLID_EXPORT_TAG = "euSKlid.path.export.v1"
+
+
+def _ensure_export_tag_property(sk):
+    if sk is None:
+        return False
+    try:
+        if _EUSKLID_EXPORT_PROP not in getattr(sk, "PropertiesList", []):
+            sk.addProperty(
+                "App::PropertyString",
+                _EUSKLID_EXPORT_PROP,
+                _EUSKLID_EXPORT_GROUP,
+                "euSKlid-owned Sketcher geometry/constraints for safe re-export",
+            )
+        return True
+    except Exception as exc:
+        try:
+            elog.info("Export tag property unavailable: %s" % exc)
+        except Exception:
+            pass
+        return False
+
+
+def _read_export_tag(sk):
+    if sk is None:
+        return {}
+    try:
+        raw = getattr(sk, _EUSKLID_EXPORT_PROP, "") or ""
+        data = json.loads(raw) if raw else {}
+        if isinstance(data, dict) and data.get("tag") == _EUSKLID_EXPORT_TAG:
+            return data
+    except Exception as exc:
+        try:
+            elog.info("Export tag read skipped: %s" % exc)
+        except Exception:
+            pass
+    return {}
+
+
+def _write_export_tag(sk, geometries, constraints, label="path"):
+    if sk is None or not _ensure_export_tag_property(sk):
+        return
+    data = {
+        "tag": _EUSKLID_EXPORT_TAG,
+        "label": str(label),
+        "updated": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "geometries": sorted({int(i) for i in geometries}),
+        "constraints": sorted({int(i) for i in constraints}),
+    }
+    try:
+        setattr(sk, _EUSKLID_EXPORT_PROP, json.dumps(data, sort_keys=True))
+    except Exception as exc:
+        try:
+            elog.info("Export tag write skipped: %s" % exc)
+        except Exception:
+            pass
+
+
+def _delete_constraint_safe(sk, index):
+    for meth in ("delConstraint", "deleteConstraint", "removeConstraint"):
+        try:
+            fn = getattr(sk, meth, None)
+            if fn is not None:
+                fn(int(index))
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def _delete_geometry_safe(sk, index):
+    # delGeometry(index, True) asks Sketcher to remove dependent constraints when
+    # supported. We already delete tagged constraints first, but this keeps the
+    # operation resilient across FreeCAD versions.
+    for args in ((int(index), True), (int(index),)):
+        try:
+            sk.delGeometry(*args)
+            return True
+        except Exception:
+            pass
+    for meth in ("deleteGeometry", "removeGeometry"):
+        try:
+            fn = getattr(sk, meth, None)
+            if fn is not None:
+                fn(int(index))
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def _clear_previous_eusklid_export(sk):
+    data = _read_export_tag(sk)
+    if not data:
+        return {"constraints": 0, "geometries": 0}
+
+    removed_constraints = 0
+    for ci in sorted(data.get("constraints", []), reverse=True):
+        if _delete_constraint_safe(sk, ci):
+            removed_constraints += 1
+
+    removed_geometries = 0
+    for gi in sorted(data.get("geometries", []), reverse=True):
+        if _delete_geometry_safe(sk, gi):
+            removed_geometries += 1
+
+    try:
+        setattr(sk, _EUSKLID_EXPORT_PROP, "")
+    except Exception:
+        pass
+    return {"constraints": removed_constraints, "geometries": removed_geometries}
+
+
+def _active_edit_sketch():
+    try:
+        edit = Gui.ActiveDocument.getInEdit() if Gui.ActiveDocument is not None else None
+    except Exception:
+        edit = None
+    candidates = []
+    if edit is not None:
+        candidates.append(getattr(edit, "Object", edit))
+    try:
+        for obj in Gui.Selection.getSelection():
+            candidates.append(obj)
+    except Exception:
+        pass
+    for obj in candidates:
+        try:
+            if getattr(obj, "TypeId", "") == "Sketcher::SketchObject":
+                return obj
+        except Exception:
+            pass
+    return None
+
 _PATH_ACTIVE_OBJECTS = []
 _PATH_PREVIEW_OBJECTS = []
 _PATH_MARKER_OBJECTS = []
@@ -20,6 +165,136 @@ _PATH_CLOSED_OBJECTS = []
 
 _CLOSED_PATHS = []
 _ACTIVE_PATH_SESSION = None
+
+# Persistent last closed path storage on the euSKlid source object.
+# _CLOSED_PATHS remains a fast in-session cache, but export/reopen can now
+# recover the latest closed contour after UI/session changes.
+_EUSKLID_LAST_PATH_PROP = "EuSKlidLastClosedPath"
+_EUSKLID_LAST_PATH_TAG = "euSKlid.path.closed.v1"
+
+
+def _json_safe_path_value(value):
+    if isinstance(value, tuple):
+        return [_json_safe_path_value(v) for v in value]
+    if isinstance(value, list):
+        return [_json_safe_path_value(v) for v in value]
+    if isinstance(value, dict):
+        return {str(k): _json_safe_path_value(v) for k, v in value.items()}
+    return value
+
+
+def _restore_tuple_points(value):
+    # Keep dictionaries/lists generally JSON-friendly, but convert numeric
+    # 2D coordinate lists back to tuples because the path code expects UV pairs.
+    if isinstance(value, list):
+        if len(value) == 2 and all(isinstance(v, (int, float)) for v in value):
+            return (float(value[0]), float(value[1]))
+        return [_restore_tuple_points(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _restore_tuple_points(v) for k, v in value.items()}
+    return value
+
+
+def _ensure_last_path_property(sketch_obj):
+    if sketch_obj is None:
+        return False
+    try:
+        if _EUSKLID_LAST_PATH_PROP not in getattr(sketch_obj, "PropertiesList", []):
+            sketch_obj.addProperty(
+                "App::PropertyString",
+                _EUSKLID_LAST_PATH_PROP,
+                "euSKlid",
+                "Last closed euSKlid path for safe re-export",
+            )
+        return True
+    except Exception as exc:
+        try:
+            elog.info("Last closed path property unavailable: %s" % exc)
+        except Exception:
+            pass
+        return False
+
+
+def _persist_closed_path(sketch_obj, record):
+    if sketch_obj is None or not record:
+        return False
+    if not _ensure_last_path_property(sketch_obj):
+        return False
+    payload = {
+        "tag": _EUSKLID_LAST_PATH_TAG,
+        "updated": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "pieces": _json_safe_path_value(record.get("pieces", [])),
+        "entity_meta": _json_safe_path_value(record.get("entity_meta", {})),
+    }
+    try:
+        setattr(sketch_obj, _EUSKLID_LAST_PATH_PROP, json.dumps(payload, sort_keys=True))
+        return True
+    except Exception as exc:
+        try:
+            elog.info("Last closed path write skipped: %s" % exc)
+        except Exception:
+            pass
+        return False
+
+
+def _load_persisted_closed_path(sketch_obj):
+    if sketch_obj is None:
+        return None
+    try:
+        raw = getattr(sketch_obj, _EUSKLID_LAST_PATH_PROP, "") or ""
+        payload = json.loads(raw) if raw else {}
+    except Exception as exc:
+        try:
+            elog.info("Last closed path read skipped: %s" % exc)
+        except Exception:
+            pass
+        return None
+    if not isinstance(payload, dict) or payload.get("tag") != _EUSKLID_LAST_PATH_TAG:
+        return None
+    pieces = _restore_tuple_points(payload.get("pieces", []))
+    if not pieces:
+        return None
+    try:
+        plane = get_data(sketch_obj).plane
+    except Exception:
+        return None
+    return {
+        "plane": plane,
+        "pieces": pieces,
+        "entity_meta": _restore_tuple_points(payload.get("entity_meta", {}) or {}),
+        "persisted": True,
+    }
+
+
+def _remember_closed_path(record):
+    global _CLOSED_PATHS
+    if not record:
+        return
+
+    # Store the closed path in the in-session cache. Do not call this
+    # function recursively; persistence is handled separately below.
+    _CLOSED_PATHS.append(record)
+
+    try:
+        _persist_closed_path(get_or_create_euclid_sketch(), record)
+    except Exception as exc:
+        try:
+            elog.info("Last closed path persist skipped: %s" % exc)
+        except Exception:
+            pass
+
+
+def _available_closed_paths():
+    # Session paths first; persisted last path as fallback.
+    if _CLOSED_PATHS:
+        return list(_CLOSED_PATHS)
+    try:
+        record = _load_persisted_closed_path(get_or_create_euclid_sketch())
+    except Exception:
+        record = None
+    if record is not None:
+        return [record]
+    return []
 
 
 def _path_cfg():
@@ -984,7 +1259,11 @@ class PathSession:
             "pieces": list(self.active_pieces),
             "entity_meta": entity_meta,
         }
-        _CLOSED_PATHS.append(record)
+        _remember_closed_path(record)
+        try:
+            App.Console.PrintMessage("euSKlid Path: closed path stored (%d piece(s))\n" % len(self.active_pieces))
+        except Exception:
+            pass
         objs = []
         for piece in self.active_pieces:
             if piece["type"] == "segment":
@@ -1073,12 +1352,12 @@ class PathSession:
         self.freeze_closed()
 
     def export_to_sketcher(self, record=None, target_sketch=None):
-        if record is None and not _CLOSED_PATHS:
-            App.Console.PrintError("euSKlid Path: no closed path available for export\n")
-            return None
-
         if record is None:
-            record = _CLOSED_PATHS[-1]
+            available = _available_closed_paths()
+            if not available:
+                App.Console.PrintError("euSKlid Path: no closed path available for export\n")
+                return None
+            record = available[-1]
         plane = record["plane"]
         pieces = record["pieces"]
         record_entity_meta = record.get("entity_meta", {}) or {}
@@ -1118,10 +1397,28 @@ class PathSession:
             "added": 0,
             "failed": 0,
         }
+        exported_geometry_indices = []
+        exported_constraint_indices = []
+
+        def _constraint_count():
+            try:
+                return len(sk.Constraints)
+            except Exception:
+                return 0
+
+        def _remember_constraints_from(before_count):
+            try:
+                after = len(sk.Constraints)
+            except Exception:
+                return
+            for ci in range(int(before_count), int(after)):
+                exported_constraint_indices.append(ci)
 
         def add_constraint_safe(*args):
+            before_count = _constraint_count()
             try:
                 sk.addConstraint(Sketcher.Constraint(*args))
+                _remember_constraints_from(before_count)
                 constraint_stats["added"] += 1
                 return True
             except Exception as exc:
@@ -1139,8 +1436,10 @@ class PathSession:
                 ("Distance", geo_index, float(value)),
                 ("Distance", geo_index, 1, geo_index, 2, float(value)),
             ):
+                before_count = _constraint_count()
                 try:
                     sk.addConstraint(Sketcher.Constraint(*args))
+                    _remember_constraints_from(before_count)
                     constraint_stats["added"] += 1
                     return True
                 except Exception as exc:
@@ -1150,6 +1449,34 @@ class PathSession:
                     except Exception:
                         pass
             return False
+
+        def add_axial_distance_constraint_safe(geo_index, axis, value):
+            # Constrain the projected spacing, not the oblique segment length.
+            # axis must be "X" or "Y" and value is an absolute UV projection.
+            ctype = "DistanceY" if str(axis).upper() == "Y" else "DistanceX"
+            for args in (
+                (ctype, geo_index, 1, geo_index, 2, float(value)),
+                (ctype, geo_index, float(value)),
+            ):
+                before_count = _constraint_count()
+                try:
+                    sk.addConstraint(Sketcher.Constraint(*args))
+                    _remember_constraints_from(before_count)
+                    constraint_stats["added"] += 1
+                    return True
+                except Exception as exc:
+                    constraint_stats["failed"] += 1
+                    try:
+                        elog.info("Export axial distance skipped: %s %s" % (args, exc))
+                    except Exception:
+                        pass
+            # Last-resort compatibility fallback: do not fail the export, but
+            # keep this visible in the log.
+            try:
+                elog.info("Export axial distance fallback to Distance for geo %s" % geo_index)
+            except Exception:
+                pass
+            return add_distance_constraint_safe(geo_index, value)
 
         def source_meta_for_piece(piece):
             try:
@@ -1207,6 +1534,14 @@ class PathSession:
             sk = doc.addObject("Sketcher::SketchObject", "euSKlidPathExport")
         else:
             sk = target_sketch
+            removed = _clear_previous_eusklid_export(sk)
+            try:
+                elog.info(
+                    "Export Path: cleared previous euSKlid export from %s (%d geometry, %d constraints)"
+                    % (getattr(sk, "Name", "Sketch"), removed.get("geometries", 0), removed.get("constraints", 0))
+                )
+            except Exception:
+                pass
         normal = App.Vector(plane.normal.x, plane.normal.y, plane.normal.z)
 
         geom_meta = []
@@ -1216,6 +1551,7 @@ class PathSession:
                 pa = App.Vector(*plane.uv_to_world(piece["a"]))
                 pb = App.Vector(*plane.uv_to_world(piece["b"]))
                 idx = sk.addGeometry(Part.LineSegment(pa, pb), False)
+                exported_geometry_indices.append(int(idx))
                 geom_meta.append({
                     "index": idx,
                     "type": "segment",
@@ -1234,6 +1570,7 @@ class PathSession:
                     a0, a1 = a1, a0
 
                 idx = sk.addGeometry(Part.ArcOfCircle(circle, float(a0), float(a1)), False)
+                exported_geometry_indices.append(int(idx))
 
                 geom_meta.append({
                     "index": idx,
@@ -1356,49 +1693,82 @@ class PathSession:
             if dot > 0.999:
                 add_constraint_safe("Tangent", cur["index"], nxt["index"])
 
-        # Sequence spacing constraints:
-        # - create construction helper segments between corresponding contour points
-        # - put one distance on a master helper
-        # - put Equal on sibling helpers in same interval group
+        # V1.1.2 sequence spacing constraints on real exported segments.
+        #
+        # No auxiliary/construction segment is created here. The contour
+        # segments cut by the sequenced parallel lines are used directly.
+        # Existing tangency and collinearity constraints above are preserved.
+        # For each repeated spacing family: first real segment = master
+        # (optional H/V + one Distance), following real segments = Equal.
         def _seq_src(meta):
             src = meta.get("source_meta", {}) or {}
             if src.get("mode") != "parallel-ref-series":
                 return None
+            if src.get("series_kind") != "repeat":
+                return None
             return src
 
-        def _closest_endpoint_pair(meta_a, meta_b):
-            pairs = (
-                ("start", "start"),
-                ("start", "end"),
-                ("end", "start"),
-                ("end", "end"),
-            )
+        def _closest_endpoint_pair(a, b):
+            candidates = [
+                ("start", "start", _dist(a["start"], b["start"])),
+                ("start", "end", _dist(a["start"], b["end"])),
+                ("end", "start", _dist(a["end"], b["start"])),
+                ("end", "end", _dist(a["end"], b["end"])),
+            ]
+            return min(candidates, key=lambda x: x[2])
+
+        def _same_uv(a, b, tol=1e-6):
+            try:
+                return _dist(a, b) <= tol
+            except Exception:
+                return False
+
+        def _find_real_segment_between(a_uv, b_uv):
             best = None
-            for a_pt, b_pt in pairs:
-                d = _dist(meta_a[a_pt], meta_b[b_pt])
-                if best is None or d < best[2]:
-                    best = (a_pt, b_pt, d)
+            best_len = None
+            for meta in geom_meta:
+                if meta.get("type") != "segment":
+                    continue
+                s0 = meta.get("start")
+                s1 = meta.get("end")
+                if ((_same_uv(s0, a_uv) and _same_uv(s1, b_uv)) or
+                        (_same_uv(s0, b_uv) and _same_uv(s1, a_uv))):
+                    ln = line_length_uv(meta)
+                    if best is None or ln < best_len:
+                        best = meta
+                        best_len = ln
             return best
 
-        def _dominant_axis(a_uv, b_uv):
-            dx = abs(b_uv[0] - a_uv[0])
-            dy = abs(b_uv[1] - a_uv[1])
-            return "X" if dx >= dy else "Y"
+        def _add_master_axis_if_clear(meta):
+            # H/V is allowed only on the dimension master segment.
+            # Followers rely on Equal + existing collinearity.
+            dx = meta["end"][0] - meta["start"][0]
+            dy = meta["end"][1] - meta["start"][1]
+            scale = max(abs(dx), abs(dy), 1.0)
+            if abs(dy) <= max(1e-6, 1e-3 * scale):
+                add_constraint_safe("Horizontal", meta["index"])
+            elif abs(dx) <= max(1e-6, 1e-3 * scale):
+                add_constraint_safe("Vertical", meta["index"])
 
         seq_items = []
+        seq_missing = 0
+
         for meta in geom_meta:
             if meta.get("type") != "segment":
                 continue
             src = _seq_src(meta)
             if src is None:
+                if (meta.get("source_meta", {}) or {}).get("mode") == "parallel-ref-series":
+                    seq_missing += 1
                 continue
             try:
                 seq_items.append({
                     "meta": meta,
-                    "series_id": str(src.get("series_id", "?")),
-                    "block_id": str(src.get("sequence_block_id", src.get("block_id", "seq"))),
+                    "series_id": src.get("series_id", "?"),
+                    "block_id": src.get("sequence_block_id", src.get("block_id", "?")),
                     "repeat_index": int(src.get("repeat_index", 0)),
                     "pattern_index": int(src.get("pattern_index", 0)),
+                    "sequence_index": int(src.get("sequence_index", 0)),
                     "distance": float(src.get("distance", 0.0)),
                 })
             except Exception:
@@ -1416,96 +1786,92 @@ class PathSession:
             if cur is None or line_length_uv(item["meta"]) > line_length_uv(cur["meta"]):
                 line_map[key] = item
 
-        by_source = {}
-        for item in line_map.values():
-            key = (item["series_id"], item["block_id"])
-            by_source.setdefault(key, []).append(item)
-
         interval_groups = {}
-        for (series_id, block_id), source_items in by_source.items():
-            source_items_sorted = sorted(source_items, key=lambda it: it["distance"])
-            for left, right in zip(source_items_sorted, source_items_sorted[1:]):
-                delta = right["distance"] - left["distance"]
-                if abs(delta) <= 1e-9:
-                    continue
-                a_pt, b_pt, _d = _closest_endpoint_pair(left["meta"], right["meta"])
-                a_uv = left["meta"][a_pt]
-                b_uv = right["meta"][b_pt]
-                axis = _dominant_axis(a_uv, b_uv)
-                interval_key = (
-                    series_id,
-                    block_id,
-                    round(abs(float(delta)), 9),
-                    left["pattern_index"],
-                    right["pattern_index"],
-                )
+        # Use DSL creation order, not geometric distance order.
+        # This makes the first spacing interval of the sequence the reference.
+        sorted_items = sorted(
+            line_map.values(),
+            key=lambda it: (it["series_id"], it["block_id"], it["sequence_index"])
+        )
+
+        def _spacing_axis_from_source(item):
+            # Source lines in a parallel/ref series define the spacing normal.
+            # If the source line is mostly horizontal, spacing is vertical (Y).
+            # If it is mostly vertical, spacing is horizontal (X).
+            meta = item.get("meta", {})
+            dx = meta.get("end", (0, 0))[0] - meta.get("start", (0, 0))[0]
+            dy = meta.get("end", (0, 0))[1] - meta.get("start", (0, 0))[1]
+            return "Y" if abs(dx) >= abs(dy) else "X"
+
+        for a, b in zip(sorted_items, sorted_items[1:]):
+            if a["series_id"] != b["series_id"] or a["block_id"] != b["block_id"]:
+                continue
+            da = b["distance"] - a["distance"]
+            if abs(da) <= 1e-9:
+                continue
+            interval_key = (
+                a["series_id"],
+                a["block_id"],
+                round(float(abs(da)), 9),
+                a["pattern_index"],
+                b["pattern_index"],
+            )
+            a_pt, b_pt, _d = _closest_endpoint_pair(a["meta"], b["meta"])
+            real_segment = _find_real_segment_between(a["meta"][a_pt], b["meta"][b_pt])
+            if real_segment is not None:
                 interval_groups.setdefault(interval_key, []).append({
-                    "a_meta": left["meta"],
-                    "b_meta": right["meta"],
-                    "a_pt": a_pt,
-                    "b_pt": b_pt,
-                    "axis": axis,
-                    "distance": abs(float(delta)),
+                    "segment": real_segment,
+                    "sequence_index": min(a["sequence_index"], b["sequence_index"]),
+                    "axis": _spacing_axis_from_source(a),
                 })
 
-        helper_count = 0
-        reference_dims = 0
-        equal_count = 0
+        generated_distance_refs = 0
+        equality_refs = 0
 
-        for _interval_key, intervals in interval_groups.items():
-            helper_ids = []
-            master_distance = None
-
-            for interval in intervals:
-                a_meta = interval["a_meta"]
-                b_meta = interval["b_meta"]
-                a_uv = a_meta[interval["a_pt"]]
-                b_uv = b_meta[interval["b_pt"]]
-                if _dist(a_uv, b_uv) <= self.tol():
+        for key, segment_refs in interval_groups.items():
+            # The reference is the first segment produced by the DSL sequence.
+            segment_refs = sorted(segment_refs, key=lambda r: r.get("sequence_index", 0))
+            unique_refs = []
+            seen = set()
+            for ref in segment_refs:
+                seg = ref.get("segment")
+                if not seg:
                     continue
-
-                pa = App.Vector(*plane.uv_to_world(a_uv))
-                pb = App.Vector(*plane.uv_to_world(b_uv))
-                try:
-                    helper_idx = sk.addGeometry(Part.LineSegment(pa, pb), True)
-                except Exception as exc:
-                    try:
-                        elog.info("Export sequence helper skipped: %s" % exc)
-                    except Exception:
-                        pass
+                gi = seg.get("index")
+                if gi in seen:
                     continue
+                seen.add(gi)
+                unique_refs.append(ref)
+            if not unique_refs:
+                continue
 
-                helper_count += 1
-                helper_ids.append(helper_idx)
+            master_ref = unique_refs[0]
+            master = master_ref["segment"]
+            _add_master_axis_if_clear(master)
 
-                add_constraint_safe("Coincident", helper_idx, 1, a_meta["index"], 1 if interval["a_pt"] == "start" else 2)
-                add_constraint_safe("Coincident", helper_idx, 2, b_meta["index"], 1 if interval["b_pt"] == "start" else 2)
+            axis = master_ref.get("axis", "Y")
+            if axis == "Y":
+                dim_value = abs(float(master["end"][1]) - float(master["start"][1]))
+            else:
+                dim_value = abs(float(master["end"][0]) - float(master["start"][0]))
 
-                if interval["axis"] == "X":
-                    add_constraint_safe("Horizontal", helper_idx)
-                else:
-                    add_constraint_safe("Vertical", helper_idx)
-
-                if master_distance is None:
-                    master_distance = max(_dist(a_uv, b_uv), interval["distance"], self.tol())
-
-            if helper_ids:
-                if add_distance_constraint_safe(helper_ids[0], float(master_distance)):
-                    reference_dims += 1
-                for helper_idx in helper_ids[1:]:
-                    if add_constraint_safe("Equal", helper_ids[0], helper_idx):
-                        equal_count += 1
+            if add_axial_distance_constraint_safe(master["index"], axis, dim_value):
+                generated_distance_refs += 1
+            for follower_ref in unique_refs[1:]:
+                follower = follower_ref["segment"]
+                if add_constraint_safe("Equal", master["index"], follower["index"]):
+                    equality_refs += 1
 
         try:
             elog.info(
-                "Export sequence spacing: %d sequence segment(s), %d source line(s), %d interval group(s), %d helper(s), %d reference dimension(s), %d equal(s)"
+                "Export sequence spacing: %d sequence segment(s), %d source line(s), %d interval group(s), %d reference dimension(s), %d Equal constraint(s), %d non-repeat series segment(s)"
                 % (
                     len(seq_items),
                     len(line_map),
                     len(interval_groups),
-                    helper_count,
-                    reference_dims,
-                    equal_count,
+                    generated_distance_refs,
+                    equality_refs,
+                    seq_missing,
                 )
             )
         except Exception:
@@ -1518,6 +1884,8 @@ class PathSession:
             )
         except Exception:
             pass
+
+        _write_export_tag(sk, exported_geometry_indices, exported_constraint_indices, label="path")
 
         doc.recompute()
         return sk
@@ -1614,11 +1982,12 @@ def _sketcher_objects(doc):
 
 
 class _PathExportDialog(QtWidgets.QDialog):
-    def __init__(self, paths, sketches, parent=None):
+    def __init__(self, paths, sketches, parent=None, active_sketch=None):
         super(_PathExportDialog, self).__init__(parent)
         self.setWindowTitle("Export Path")
         self.paths = list(paths)
         self.sketches = list(sketches)
+        self.active_sketch = active_sketch
         self._checks = []
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -1636,14 +2005,22 @@ class _PathExportDialog(QtWidgets.QDialog):
         v_mode = QtWidgets.QVBoxLayout(group_mode)
         self.rb_new = QtWidgets.QRadioButton("New Sketch")
         self.rb_existing = QtWidgets.QRadioButton("Existing Sketch")
-        self.rb_new.setChecked(True)
+        self.rb_new.setChecked(active_sketch is None)
+        self.rb_existing.setChecked(active_sketch is not None)
 
         row_existing = QtWidgets.QHBoxLayout()
         row_existing.addWidget(self.rb_existing)
         self.combo = QtWidgets.QComboBox()
-        for sk in self.sketches:
-            self.combo.addItem(getattr(sk, "Label", getattr(sk, "Name", "Sketch")), sk)
-        self.combo.setEnabled(False)
+        active_index = -1
+        for i, sk in enumerate(self.sketches):
+            label = getattr(sk, "Label", getattr(sk, "Name", "Sketch"))
+            if active_sketch is not None and sk is active_sketch:
+                label = "%s  [active]" % label
+                active_index = i
+            self.combo.addItem(label, sk)
+        if active_index >= 0:
+            self.combo.setCurrentIndex(active_index)
+        self.combo.setEnabled(active_sketch is not None)
         row_existing.addWidget(self.combo)
 
         v_mode.addWidget(self.rb_new)
@@ -1671,6 +2048,80 @@ class _PathExportDialog(QtWidgets.QDialog):
             return None
 
 
+
+def reopen_closed_path():
+    """Re-open the latest closed euSKlid contour as a Path visual.
+
+    This intentionally does not export anything to Sketcher. It restores the
+    latest closed contour from the in-session cache or persistent storage,
+    redraws it as a closed path, and leaves export as a separate explicit action.
+    """
+    global _CLOSED_PATHS, _PATH_CLOSED_OBJECTS, _ACTIVE_PATH_SESSION
+
+    paths = _available_closed_paths()
+    if not paths:
+        App.Console.PrintError("euSKlid Path: no closed contour available to reopen\n")
+        return None
+
+    record = paths[-1]
+
+    if _ACTIVE_PATH_SESSION is not None:
+        try:
+            _ACTIVE_PATH_SESSION.finish()
+        except Exception:
+            pass
+        _ACTIVE_PATH_SESSION = None
+
+    if not _CLOSED_PATHS:
+        _CLOSED_PATHS.append(record)
+
+    try:
+        _PATH_CLOSED_OBJECTS = _remove_objects(_PATH_CLOSED_OBJECTS)
+    except Exception:
+        _PATH_CLOSED_OBJECTS = []
+
+    plane = record.get("plane")
+    pieces = record.get("pieces", []) or []
+    if plane is None or not pieces:
+        App.Console.PrintError("euSKlid Path: stored contour is empty or invalid\n")
+        return None
+
+    objs = []
+    closed_color, closed_width, closed_alpha = _path_style("closed", (0.0, 0.45, 0.0), 6.0, 0)
+    for piece in pieces:
+        try:
+            if piece.get("type") == "segment":
+                obj = _make_line_segment(
+                    plane, piece["a"], piece["b"],
+                    color=closed_color, width=closed_width,
+                    transparency=closed_alpha, name="euSKlidClosedPathSeg")
+            else:
+                a0 = piece["a0"]
+                a1 = piece["a1"]
+                if piece.get("delta", 1.0) < 0.0:
+                    a0, a1 = a1, a0
+                obj = _make_arc_segment(
+                    plane, piece["center"], piece["radius"], a0, a1,
+                    color=closed_color, width=closed_width,
+                    transparency=closed_alpha, name="euSKlidClosedPathArc")
+            if obj is not None:
+                objs.append(obj)
+        except Exception as exc:
+            try:
+                elog.info("Reopen contour piece skipped: %s" % exc)
+            except Exception:
+                pass
+
+    _PATH_CLOSED_OBJECTS = objs
+    try:
+        if App.ActiveDocument is not None:
+            App.ActiveDocument.recompute()
+    except Exception:
+        pass
+
+    App.Console.PrintMessage("euSKlid Path: reopened closed contour (%d piece(s)); use Export Path to Sketcher to export it\n" % len(pieces))
+    return record
+
 def export_path_to_sketcher():
     global _ACTIVE_PATH_SESSION
 
@@ -1681,7 +2132,8 @@ def export_path_to_sketcher():
             pass
         _ACTIVE_PATH_SESSION = None
 
-    if not _CLOSED_PATHS:
+    available_paths = _available_closed_paths()
+    if not available_paths:
         App.Console.PrintError("euSKlid Path: no closed path available for export\n")
         return None
 
@@ -1689,8 +2141,17 @@ def export_path_to_sketcher():
     if doc is None:
         return None
 
-    paths = list(_CLOSED_PATHS)
+    paths = list(available_paths)
     sketches = _sketcher_objects(doc)
+    active_sketch = _active_edit_sketch()
+
+    if len(paths) == 1 and active_sketch is not None:
+        dummy = PathSession(get_or_create_euclid_sketch())
+        try:
+            dummy.finish()
+        except Exception:
+            pass
+        return dummy.export_to_sketcher(record=paths[0], target_sketch=active_sketch)
 
     if len(paths) == 1 and not sketches:
         dummy = PathSession(get_or_create_euclid_sketch())
@@ -1700,7 +2161,7 @@ def export_path_to_sketcher():
             pass
         return dummy.export_to_sketcher(record=paths[0], target_sketch=None)
 
-    dlg = _PathExportDialog(paths, sketches)
+    dlg = _PathExportDialog(paths, sketches, active_sketch=active_sketch)
     if not dlg.exec_():
         return None
 

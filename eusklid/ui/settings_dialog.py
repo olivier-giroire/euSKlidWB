@@ -73,14 +73,6 @@ class SettingsDialog(QtGui.QDialog):
         w = QtGui.QWidget()
         v = QtGui.QVBoxLayout(w)
 
-        g_uv = QtGui.QGroupBox(tr("U/V Frame"))
-        f = QtGui.QFormLayout(g_uv)
-        self.uv_size = make_spin(0, 5000, 150)
-        self.uv_arrow = make_spin(0, 5000, 30)
-        self.uv_thickness = make_spin(0, 20, 3)
-        f.addRow(tr("Size (px)"), self.uv_size)
-        f.addRow(tr("Arrow size"), self.uv_arrow)
-        f.addRow(tr("Thickness"), self.uv_thickness)
 
         g_ar = QtGui.QGroupBox(tr("Direction Arrows"))
         f = QtGui.QFormLayout(g_ar)
@@ -116,7 +108,6 @@ class SettingsDialog(QtGui.QDialog):
         f.addRow(tr("Hover"), self.pt_hover)
         f.addRow(tr("Markers"), self.pt_marker)
 
-        v.addWidget(g_uv)
         v.addWidget(g_ar)
         v.addWidget(g_pt)
         v.addStretch()
@@ -239,11 +230,6 @@ class SettingsDialog(QtGui.QDialog):
     def _collect(self):
         return {
             "gui": {
-                "uv": {
-                    "size": self.uv_size.value(),
-                    "arrow_size": self.uv_arrow.value(),
-                    "thickness": self.uv_thickness.value()
-                },
                 "arrows": {
                     "color": get_color(self.ar_color),
                     "alpha": self.ar_alpha.value(),
@@ -320,9 +306,6 @@ class SettingsDialog(QtGui.QDialog):
 
     def _load(self, cfg):
         try:
-            self.uv_size.setValue(cfg["gui"]["uv"]["size"])
-            self.uv_arrow.setValue(cfg["gui"]["uv"]["arrow_size"])
-            self.uv_thickness.setValue(cfg["gui"]["uv"]["thickness"])
 
             self.ar_color._rgb = tuple(cfg["gui"]["arrows"]["color"])
             self.ar_alpha.setValue(cfg["gui"]["arrows"]["alpha"])
