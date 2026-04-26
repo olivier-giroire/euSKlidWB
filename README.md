@@ -1,58 +1,116 @@
-euSKlidWB B1 build for FreeCAD.
+# euSKlidWB
 
-New in B1:
-- Center / tg now supports tangent references of type:
-  - line
-  - circle
-- 2 Tg / Radius now supports:
-  - line + line
-  - line + circle
-  - circle + circle
-- When multiple solutions exist, choice is made graphically:
-  - candidate circles are previewed
-  - click near the desired preview circle to validate
+**euSKlid** est un Workbench FreeCAD dédié à la construction géométrique plane,
+inspiré de la géométrie classique (règle & compas), avec un workflow explicite :
 
-Menu structure remains the current top-level structure.
-Path and some other functions are still placeholders.
+> **Construction → Contour → Export**
+
+Le nom "euSKlid" veut rappeler que l'auteur n'a pour ainsi dire rien créé, c'est
+juste un vieux qui du genre de ceux ayant connu des logiciels de CAO dans les années
+90, et qui ne voyaient poindre la conception paramétrique qu'à un horizon incertain.
+Il s'est donc très largement inspiré de ses souvenirs nostalgiques d'un temps (que
+les moins de ... toutça toutça ...) durant lequel, la modélisation 3D était pratiquée
+par des dessinateurs (Ouais, criterium, calque, règle, compas ...). Et oui, ces vieux
+avaient une approche topologique et descriptive de la représentation, et c'était très
+instinctif. Donc en gros, voila : le sketcher paramétrique, c'est top, mais s'il peut
+être aidé par l'instinct, c'est mieux.
+Et pour l'auteur (ce vieux con qui écrit des trucs que personne ne lira jamais), le
+meilleur du mieux était représenté par le sketcher de l'un des mastodontes de la
+modélisation de l'époque, "mystérieusement" disparu à l'occasion du rachat de son
+éditeur (français), par son concurrent direct (français) en 1999 ... voila pour le nom.
+
+Et sinon, accessoirement, concernant l'auteur, c'est sa première expérience de
+"vibe coding", parce qu'un dessinateur devenu DSI, il ne faut pas trop s'attendre à
+ce qu'il sache coder.
+
+---
+
+## ✨ Non Objectif
+
+Remplacer le Sketcher de FreeCAD:
+- Qui est paramétrique
+- Qui a un excellent analyseur de contraintes
+- Qui fait très très bien son taf
+
+---
+
+## ✨ Objectif
+
+Offrir une alternative rapide, ciblée, et visuelle au Sketcher FreeCAD spécifiquement pour :
+- construire *tres* rapidement des géométries propres
+- définir des contours précis
+- exporter vers le sketcher de FreeCAD, pour retrouver le workflow de conception
+
+---
+
+## 🧠 Philosophie
+
+- ✔ Géométrie explicite
+- ✔ Feedback visuel constant
+- ✔ Aucune magie cachée
+- ✔ Workflow linéaire et lisible
+
+---
+
+## 🚀 Fonctionnalités
+
+### 🔹 Construction
+- Lignes :
+  - 2 ancres :
+    - points libres
+    - points remarquables (snapping avancé)
+  - parallèles (//U, //V, //Ref) :
+    - listes de valeurs
+    - motifs de répétition (repeat 13 (0,1) origin 0 step 2.5)
+    - composition de motifs et de listes (rep 13 (0,1) org 0 stp 2.5, r 4 (1,5,6) o 40 s 10, 65, 75, 87)
+  - séries et grilles
+- Cercles :
+  - centre / rayon
+  - tangences diverses
+  - 3 points
+- Snapping avancé calculé à la volée pour toutes les ancres:
+  - points
+  - centres
+  - intersections
+  - tangences
+- Prévisualisation dynamique des options candidates de résultats
+
+---
+
+### 🔹 Contour (Path)
+- Sélection guidée des entités
+- Fermeture contrôlée
+- Visualisation en temps réel
+
+---
+
+### 🔹 Export
+- Export vers Sketcher FreeCAD
+- Gestion de plusieurs contours
+- Recherche de contraintes à exporter
+
+---
+
+## ⚙️ Configuration
+
+### UI
+- Couleurs, transparence, épaisseur des différents types de constructions
+- Couleurs, transparence, taille des différents "Points"
 
 
-Patch 3:
-- preview for line 2pts
-- preview for center/radius, center/point, 3 points circles
-- preview uses the same snapped point that the click will use
+### Work
+- Construction
+- Contour
+- Highlight
 
+### Feeling
+- Snap threshold (pixels)
+- Autogrid
+- Messages console / aide
 
-Patch 5.2:
-- 2 Points / 1 Tg now supports tangent circle reference
-- highlight of selected line/circle under mouse during tangency pick
-- built from Patch 4.1 MERGED base
+---
 
+## 📦 Installation
 
-Patch 6:
-- Lines: Point / Tg Circle, //U + Tg, //V + Tg, //Ref + Tg
-- includes project_point_on_line and highlight helpers
-
-
-Patch 7.3 clean:
-- standardized raw_uv vs uv in tangent line sessions
-- line preview follows nearest solution under mouse
-
-
-Patch 8:
-- auto view orientation when creating sketch planes
-- X/Y axes may be used as line references
-- new Lines menu centered on Ref
-- added Series ∥/Ref, ∥/Ref + Point, ⟂/Ref + Point
-
-
-Patch 8.1:
-- stabilize ∥/Ref + Point and ⟂/Ref + Point sessions
-- restore line preview during second step
-
-
-## V1.1.3 XY-only simplification
-
-- Removed the U/V visual frame overlay.
-- Removed FreeCAD X/Y/Z axis-cross hide/restore side effects.
-- euSKlid data is interpreted in the FreeCAD XY plane.
-- Axis-parallel UI now exposes X/Y labels.
+Tout dans : ~/.local/share/FreeCAD/v{x-y}/Mod/euSKlidWB.
+Et non, désolé, pour windows, je ne sais pas, mais ça doit être dans la doc.
