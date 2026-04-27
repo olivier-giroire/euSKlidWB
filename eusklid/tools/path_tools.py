@@ -7,6 +7,11 @@ import FreeCAD as App
 import FreeCADGui as Gui
 import Part
 
+try:
+    from pivy import coin
+except Exception:
+    coin = None
+
 from ..geom import LineEntity2D, CircleEntity2D
 from ..runtime import get_or_create_euclid_sketch, get_data
 from ..core.groups import ensure_euclid_groups, get_path_group, get_transient_group, add_to_group
@@ -384,6 +389,198 @@ def _path_pixels_to_world(plane, uv, px):
     return max(1e-6, float(px) * 0.01)
 
 
+
+# --- Coin3D live Path overlay -------------------------------------------------
+# Preview/active path visuals must not be FreeCAD document objects: mouse move
+# events can fire very quickly and document-object previews are hard to clean
+# reliably.  This overlay attaches one transient Coin3D separator to the active
+# 3D view and redraws it in-place.  It is intentionally built only from simple
+# Pivy/Coin nodes (SoSeparator, SoBaseColor, SoDrawStyle, SoCoordinate3,
+# SoLineSet, SoPointSet) to avoid the fragile PyVi/custom-marker path.
+
+
+def _coin_root():
+    try:
+        if coin is None or Gui.ActiveDocument is None:
+            return None
+        view = Gui.ActiveDocument.ActiveView
+        if view is None:
+            return None
+        return view.getSceneGraph()
+    except Exception:
+        return None
+
+
+def _coin_clear_children(node):
+    try:
+        while node.getNumChildren() > 0:
+            node.removeChild(0)
+    except Exception:
+        pass
+
+
+def _coin_color_tuple(color):
+    try:
+        return (float(color[0]), float(color[1]), float(color[2]))
+    except Exception:
+        return (1.0, 0.5, 0.0)
+
+
+def _piece_vertices_world(plane, piece):
+    try:
+        if piece.get("type") == "segment":
+            return [plane.uv_to_world(piece["a"]), plane.uv_to_world(piece["b"])]
+        if piece.get("type") == "arc":
+            a0 = float(piece["a0"])
+            a1 = float(piece["a1"])
+            delta = float(piece.get("delta", a1 - a0))
+            if abs(delta) < 1e-12:
+                return []
+            # Keep the preview smooth without creating excessive Coin vertices.
+            steps = int(max(12, min(96, abs(delta) / (math.pi / 36.0))))
+            pts = []
+            cx, cy = piece["center"]
+            r = float(piece["radius"])
+            for i in range(steps + 1):
+                t = i / float(steps)
+                a = a0 + delta * t
+                pts.append(plane.uv_to_world((cx + r * math.cos(a), cy + r * math.sin(a))))
+            return pts
+    except Exception:
+        return []
+    return []
+
+
+class _PathCoinOverlay(object):
+    def __init__(self):
+        self.root = None
+        self.sep = None
+
+    def _ensure(self):
+        if coin is None:
+            return False
+        root = _coin_root()
+        if root is None:
+            return False
+        if self.sep is None or self.root is not root:
+            self.detach()
+            try:
+                self.sep = coin.SoSeparator()
+                try:
+                    self.sep.ref()
+                except Exception:
+                    pass
+                root.addChild(self.sep)
+                self.root = root
+            except Exception:
+                self.root = None
+                self.sep = None
+                return False
+        return True
+
+    def detach(self):
+        if self.root is not None and self.sep is not None:
+            try:
+                self.root.removeChild(self.sep)
+            except Exception:
+                pass
+        try:
+            if self.sep is not None:
+                self.sep.unref()
+        except Exception:
+            pass
+        self.root = None
+        self.sep = None
+
+    def clear(self):
+        if self.sep is not None:
+            _coin_clear_children(self.sep)
+
+    def _add_lines(self, parent, plane, pieces, color, width):
+        if not pieces:
+            return
+        coords = []
+        counts = []
+        for piece in pieces:
+            pts = _piece_vertices_world(plane, piece)
+            if len(pts) >= 2:
+                counts.append(len(pts))
+                coords.extend(pts)
+        if not coords:
+            return
+        try:
+            sep = coin.SoSeparator()
+            col = coin.SoBaseColor()
+            col.rgb.setValue(*_coin_color_tuple(color))
+            sty = coin.SoDrawStyle()
+            sty.style = coin.SoDrawStyle.LINES
+            sty.lineWidth.setValue(float(width))
+            crd = coin.SoCoordinate3()
+            crd.point.setValues(0, len(coords), coords)
+            lin = coin.SoLineSet()
+            lin.numVertices.setValues(0, len(counts), counts)
+            sep.addChild(col)
+            sep.addChild(sty)
+            sep.addChild(crd)
+            sep.addChild(lin)
+            parent.addChild(sep)
+        except Exception:
+            pass
+
+    def _add_points(self, parent, plane, markers):
+        if not markers:
+            return
+        grouped = {}
+        for item in markers:
+            try:
+                uv = item[0]
+                kind = item[1] if len(item) > 1 and isinstance(item[1], str) else "marker"
+                grouped.setdefault(kind, []).append(plane.uv_to_world(uv))
+            except Exception:
+                pass
+        for kind, coords in grouped.items():
+            if not coords:
+                continue
+            try:
+                sep = coin.SoSeparator()
+                col = coin.SoBaseColor()
+                col.rgb.setValue(*_coin_color_tuple(_path_point_color(kind)))
+                sty = coin.SoDrawStyle()
+                sty.style = coin.SoDrawStyle.POINTS
+                # SoPointSet is square on most Coin backends.  We keep it because
+                # it is stable, native, and does not crash like custom marker nodes.
+                sty.pointSize.setValue(max(1.0, float(_path_point_size())))
+                crd = coin.SoCoordinate3()
+                crd.point.setValues(0, len(coords), coords)
+                pts = coin.SoPointSet()
+                try:
+                    pts.numPoints.setValue(len(coords))
+                except Exception:
+                    pass
+                sep.addChild(col)
+                sep.addChild(sty)
+                sep.addChild(crd)
+                sep.addChild(pts)
+                parent.addChild(sep)
+            except Exception:
+                pass
+
+    def update(self, plane, active_pieces=None, preview_pieces=None, markers=None):
+        if not self._ensure():
+            return False
+        self.clear()
+        try:
+            cur_color, cur_width, _cur_alpha = _path_style("current", (1.0, 0.45, 0.0), 7.0, 0)
+            cand_color, cand_width, _cand_alpha = _path_style("candidate", (0.35, 1.0, 0.35), 5.0, 0)
+            self._add_lines(self.sep, plane, active_pieces or [], cur_color, cur_width)
+            self._add_lines(self.sep, plane, preview_pieces or [], cand_color, cand_width)
+            self._add_points(self.sep, plane, markers or [])
+            return True
+        except Exception:
+            self.clear()
+            return False
+
+
 def _make_path_point(plane, uv, kind="marker", name="euSKlidPathPoint"):
     radius = _path_pixels_to_world(plane, uv, _path_point_size() * 0.5)
     min_radius = _path_pixels_to_world(plane, uv, 4.0)
@@ -395,6 +592,28 @@ def _make_path_point(plane, uv, kind="marker", name="euSKlidPathPoint"):
         transparency=_path_point_alpha(),
         name=name,
     )
+
+
+
+def _cleanup_legacy_path_visual_objects():
+    """Remove old document-object Path previews from earlier renderers.
+
+    Closed paths are intentionally preserved; all live preview/active/marker
+    visuals are now Coin3D overlay nodes and should not remain as Part::Feature
+    document objects.
+    """
+    doc = App.ActiveDocument
+    if doc is None:
+        return
+    for obj in list(getattr(doc, "Objects", [])):
+        try:
+            name = getattr(obj, "Name", "") or ""
+            if name.startswith("euSKlidClosedPath"):
+                continue
+            if name.startswith("euSKlidPath"):
+                doc.removeObject(name)
+        except Exception:
+            pass
 
 
 def _remove_objects(objs):
@@ -666,6 +885,8 @@ class PathSession:
         self.preview_pieces = []
         self.history = []
         self._push_history()
+        self._overlay = _PathCoinOverlay()
+        _cleanup_legacy_path_visual_objects()
 
         self._observer = _SelectionObserver(self)
         Gui.Selection.addObserver(self._observer)
@@ -713,6 +934,10 @@ class PathSession:
             pass
         try:
             self._view.removeEventCallback("SoLocation2Event", self._cb_move)
+        except Exception:
+            pass
+        try:
+            self._overlay.detach()
         except Exception:
             pass
         clear_path_preview()
@@ -1083,63 +1308,27 @@ class PathSession:
         return out
 
     def _show_hover_marker(self, uv):
-        clear_path_markers()
-        obj = _make_path_point(
-            self.plane,
-            uv,
-            kind="hover",
-            name="euSKlidPathHover",
-        )
-        global _PATH_MARKER_OBJECTS
-        _PATH_MARKER_OBJECTS = [obj] if obj is not None else []
+        markers = []
+        if uv is not None:
+            markers.append((uv, "hover", "euSKlidPathHover"))
         try:
-            App.ActiveDocument.recompute()
+            self._overlay.update(self.plane, self.active_pieces, [], markers)
         except Exception:
             pass
 
     def _show_markers(self, markers):
-        clear_path_markers()
-        objs = []
-        for item in markers:
-            try:
-                uv = item[0]
-                kind = item[1] if len(item) > 1 else "marker"
-                name = item[2] if len(item) > 2 else "euSKlidPathMarker"
-                if not isinstance(kind, str):
-                    # Backward-compatible fallback for old marker tuples:
-                    # (uv, color, radius, name). Keep name, but use configured marker style.
-                    name = item[3] if len(item) > 3 else "euSKlidPathMarker"
-                    kind = "marker"
-                obj = _make_path_point(self.plane, uv, kind=kind, name=name)
-                if obj is not None:
-                    objs.append(obj)
-            except Exception:
-                pass
-        global _PATH_MARKER_OBJECTS
-        _PATH_MARKER_OBJECTS = objs
         try:
-            App.ActiveDocument.recompute()
+            self._overlay.update(self.plane, self.active_pieces, self.preview_pieces, markers or [])
         except Exception:
             pass
 
-    def render_preview(self):
-        clear_path_preview()
-
-        objs = []
+    def _preview_markers(self):
         markers = []
-
-        if self.current_entity_idx is None:
-            if self.last_mouse_uv is not None:
-                self._show_hover_marker(self.last_mouse_uv)
-            return
-
         if self.current_point is not None:
             markers.append((self.current_point, "marker", "euSKlidPathCurrent"))
-
         if self.preview_pieces:
             first_piece = self.preview_pieces[0]
             last_piece = self.preview_pieces[-1]
-
             start_uv = first_piece["a"] if first_piece["type"] == "segment" else (
                 first_piece["center"][0] + first_piece["radius"] * math.cos(first_piece["a0"]),
                 first_piece["center"][1] + first_piece["radius"] * math.sin(first_piece["a0"]),
@@ -1148,99 +1337,41 @@ class PathSession:
                 last_piece["center"][0] + last_piece["radius"] * math.cos(last_piece["a1"]),
                 last_piece["center"][1] + last_piece["radius"] * math.sin(last_piece["a1"]),
             )
-
             markers.append((start_uv, "marker", "euSKlidPathPreviewStart"))
             markers.append((end_uv, "snap", "euSKlidPathPreviewEnd"))
+        return markers
 
-        cand_color, cand_width, cand_alpha = _path_style("candidate", (0.35, 1.0, 0.35), 5.0, 0)
-
-        for piece in self.preview_pieces:
-            if piece["type"] == "segment":
-                obj = _make_line_segment(
-                    self.plane,
-                    piece["a"],
-                    piece["b"],
-                    color=cand_color,
-                    width=cand_width,
-                    transparency=cand_alpha,
-                    name="euSKlidPathPreviewSeg",
-                )
-            else:
-                a0 = piece["a0"]
-                a1 = piece["a1"]
-                if piece["delta"] < 0.0:
-                    a0, a1 = a1, a0
-                obj = _make_arc_segment(
-                    self.plane,
-                    piece["center"],
-                    piece["radius"],
-                    a0,
-                    a1,
-                    color=cand_color,
-                    width=cand_width,
-                    transparency=cand_alpha,
-                    name="euSKlidPathPreviewArc",
-                )
-            if obj is not None:
-                objs.append(obj)
-
-        global _PATH_PREVIEW_OBJECTS
-        _PATH_PREVIEW_OBJECTS = objs
-        self._show_markers(markers)
-        try:
-            App.ActiveDocument.recompute()
-        except Exception:
-            pass
-    def render_active(self):
-        clear_path_active()
-        clear_path_preview()
-
-        objs = []
+    def _active_markers(self):
         markers = []
-
         if self.start_point is not None:
             markers.append((self.start_point, "marker", "euSKlidPathStart"))
-
         if self.current_point is not None:
             markers.append((self.current_point, "marker", "euSKlidPathCurrent"))
+        return markers
 
-        cur_color, cur_width, cur_alpha = _path_style("current", (1.0, 0.45, 0.0), 7.0, 0)
-
-        for piece in self.active_pieces:
-            if piece["type"] == "segment":
-                obj = _make_line_segment(
-                    self.plane,
-                    piece["a"],
-                    piece["b"],
-                    color=cur_color,
-                    width=cur_width,
-                    transparency=cur_alpha,
-                    name="euSKlidPathSeg",
-                )
+    def render_preview(self):
+        # Live preview is now Coin3D-only: no FreeCAD document objects are
+        # created during mouse move, so there is nothing to accumulate or clean.
+        if self.current_entity_idx is None:
+            if self.last_mouse_uv is not None:
+                self._show_hover_marker(self.last_mouse_uv)
             else:
-                a0 = piece["a0"]
-                a1 = piece["a1"]
-                if piece["delta"] < 0.0:
-                    a0, a1 = a1, a0
-                obj = _make_arc_segment(
-                    self.plane,
-                    piece["center"],
-                    piece["radius"],
-                    a0,
-                    a1,
-                    color=cur_color,
-                    width=cur_width,
-                    transparency=cur_alpha,
-                    name="euSKlidPathArc",
-                )
-            if obj is not None:
-                objs.append(obj)
-
-        global _PATH_ACTIVE_OBJECTS
-        _PATH_ACTIVE_OBJECTS = objs
-        self._show_markers(markers)
+                try:
+                    self._overlay.update(self.plane, self.active_pieces, [], [])
+                except Exception:
+                    pass
+            return
         try:
-            App.ActiveDocument.recompute()
+            self._overlay.update(self.plane, self.active_pieces, self.preview_pieces, self._preview_markers())
+        except Exception:
+            pass
+
+    def render_active(self):
+        # Active path is also transient Coin3D overlay.  Closed paths remain
+        # persistent document objects and are created only by freeze_closed().
+        self.preview_pieces = []
+        try:
+            self._overlay.update(self.plane, self.active_pieces, [], self._active_markers())
         except Exception:
             pass
     def freeze_closed(self):
@@ -1269,12 +1400,14 @@ class PathSession:
             if piece["type"] == "segment":
                 closed_color, closed_width, closed_alpha = _path_style("closed", (0.0, 0.45, 0.0), 6.0, 0)
                 obj = _make_line_segment(self.plane, piece["a"], piece["b"], color=closed_color, width=closed_width, transparency=closed_alpha, name="euSKlidClosedPathSeg")
+                obj = None
             else:
                 a0 = piece["a0"]; a1 = piece["a1"]
                 if piece["delta"] < 0.0:
                     a0, a1 = a1, a0
                 closed_color, closed_width, closed_alpha = _path_style("closed", (0.0, 0.45, 0.0), 6.0, 0)
-                obj = _make_arc_segment(self.plane, piece["center"], piece["radius"], a0, a1, color=closed_color, width=closed_width, transparency=closed_alpha, name="euSKlidClosedPathArc")
+                #obj = _make_arc_segment(self.plane, piece["center"], piece["radius"], a0, a1, color=closed_color, width=closed_width, transparency=closed_alpha, name="euSKlidClosedPathArc")
+                obj = None
             if obj is not None:
                 objs.append(obj)
         try:

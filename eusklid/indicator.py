@@ -210,15 +210,66 @@ def _set_fc_axis_cross_visible(visible):
     return
 
 def _remove_objs(objs):
-    """Reset Python overlay state without touching FreeCAD document objects.
+    """Remove known indicator overlay objects from the FreeCAD document.
 
-    FreeCAD can recursively re-enter Python when transient objects are removed
-    or hidden from event/refresh callbacks. For now, indicator cleanup is
-    document-side no-op: euSKlid forgets the overlay list and avoids recursive
-    document mutation.
+    This replaces the former no-op cleanup. The guard prevents recursive
+    document mutations when FreeCAD refresh callbacks re-enter indicator code.
     """
+    global _REMOVE_OBJS_GUARD
+
+    if _REMOVE_OBJS_GUARD:
+        return []
+
+    doc = App.ActiveDocument
+    if doc is None:
+        return []
+
+    _REMOVE_OBJS_GUARD = True
+    try:
+        for obj in list(objs or []):
+            try:
+                name = getattr(obj, "Name", None)
+                if name:
+                    doc.removeObject(name)
+            except Exception:
+                pass
+    finally:
+        _REMOVE_OBJS_GUARD = False
+
     return []
 
+
+def _remove_objects_by_prefix(prefixes):
+    """Remove orphaned indicator objects by exact prefix family.
+
+    Narrow by design: it targets line/circle/polygon overlays that can be
+    recreated on every preview/highlight refresh, without sweeping generic
+    point objects such as euSKlidPoint.
+    """
+    global _REMOVE_OBJS_GUARD
+
+    if _REMOVE_OBJS_GUARD:
+        return
+
+    doc = App.ActiveDocument
+    if doc is None:
+        return
+
+    prefixes = tuple(prefixes or ())
+    if not prefixes:
+        return
+
+    _REMOVE_OBJS_GUARD = True
+    try:
+        for obj in list(getattr(doc, "Objects", [])):
+            try:
+                name = getattr(obj, "Name", "")
+                if any(name.startswith(prefix) for prefix in prefixes):
+                    doc.removeObject(obj.Name)
+            except Exception:
+                pass
+    finally:
+        _REMOVE_OBJS_GUARD = False
 
 def _pixels_to_fontsize(px):
     try:
@@ -484,6 +535,7 @@ def clear_arrow():
 def clear_candidates():
     global _CANDIDATE_OBJECTS
     _CANDIDATE_OBJECTS = _remove_objs(_CANDIDATE_OBJECTS)
+    _remove_objects_by_prefix(("euSKlidCandidateCircle",))
 
 def clear_snap():
     global _SNAP_OBJECTS
@@ -496,14 +548,25 @@ def clear_manual():
 def clear_preview():
     global _PREVIEW_OBJECTS
     _PREVIEW_OBJECTS = _remove_objs(_PREVIEW_OBJECTS)
+    _remove_objects_by_prefix((
+        "euSKlidPreviewLine",
+        "euSKlidPreviewCircle",
+        "euSKlidPreviewPolygonEdge",
+    ))
 
 def clear_highlight():
     global _HIGHLIGHT_OBJECTS
     _HIGHLIGHT_OBJECTS = _remove_objs(_HIGHLIGHT_OBJECTS)
+    _remove_objects_by_prefix(("euSKlidHighlightLine", "euSKlidHighlightCircle"))
 
 def clear_selected():
     global _SELECTED_OBJECTS
     _SELECTED_OBJECTS = _remove_objs(_SELECTED_OBJECTS)
+    _remove_objects_by_prefix((
+        "euSKlidSelectedLine",
+        "euSKlidSelectedCircle",
+        "euSKlidSelectedPoint",
+    ))
 
 def clear_all():
     reset_overlay_states(clear_frame_too=True)

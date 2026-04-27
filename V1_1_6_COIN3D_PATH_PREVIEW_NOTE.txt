@@ -1,0 +1,7 @@
+V1.1.6 - Coin3D Path preview
+
+- Path preview/active visuals are no longer FreeCAD document objects.
+- One transient Coin3D overlay is attached to the active 3D view per PathSession.
+- Uses only basic Pivy/Coin nodes to avoid fragile custom marker/PyVi code paths.
+- Closed paths are still persisted as document objects (euSKlidClosedPath*).
+- Export/constraints/menus are unchanged from V1.1.5 reopen_no_export_fix.
