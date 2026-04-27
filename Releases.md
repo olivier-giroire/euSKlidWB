@@ -1,5 +1,15 @@
 # Releases
 
+## v1.1.9
+
+Major stabilization release.
+
+- Full migration of previews and path rendering to Coin3D
+- Reliable interaction model (no more selection conflicts)
+- Stable redraw and rendering synchronization
+- Persistent path preview behavior
+- Lint cleanup and math utilities consolidation
+
 ## v1.1.6
 
 Stabilisation des visuels temporaires avant migration technique vers Pivy/Coin3D.
