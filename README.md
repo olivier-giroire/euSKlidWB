@@ -21,7 +21,7 @@ modélisation de l'époque, "mystérieusement" disparu à l'occasion du rachat d
 
 Et sinon, accessoirement, concernant l'auteur, c'est sa première expérience de
 "vibe coding", parce qu'un dessinateur devenu DSI, il ne faut pas trop s'attendre à
-ce qu'il sache coder.
+ce qu'il sache coder un plugin FreeCAD.
 
 ---
 
