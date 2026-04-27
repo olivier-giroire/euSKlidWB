@@ -25,7 +25,6 @@ from .tools.circle_tools import (
     start_circle_center_radius as tools_start_circle_center_radius,
     start_circle_center_pass as tools_start_circle_center_pass,
     start_circle_three_points as tools_start_circle_three_points,
-    start_circle_two_points_radius as tools_start_circle_two_points_radius,
     start_circle_two_anchors_radius as tools_start_circle_two_anchors_radius,
     start_circle_to_polygon as tools_start_circle_to_polygon,
 )
@@ -75,7 +74,7 @@ def stop_active_session():
             pass
 
 
-from . import legacy_api
+from . import legacy_api  # noqa: E402
 legacy_api.set_legacy_stopper(stop_active_session)
 
 

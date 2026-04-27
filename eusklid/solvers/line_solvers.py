@@ -1,6 +1,6 @@
 
 import math
-from ..math2d import normalize, dist2, project_point_on_line
+from ..math2d import normalize, dist2, project_point_on_line, perp
 
 def build_parallel_ref_series(ref, values):
     direction = normalize(ref["direction"])

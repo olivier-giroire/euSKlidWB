@@ -166,8 +166,6 @@ def _allowed_anchor_kinds(context, picker_kind):
     The goal is UX filtering only: do not highlight/select entities that the
     current construction cannot actually consume.
     """
-    name = getattr(context, "name", "")
-
     # A line built from anchors uses point anchors and circle anchors
     # (for tangent solutions). A line itself is not a useful anchor here.
     if picker_kind == "line_anchor":

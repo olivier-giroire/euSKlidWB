@@ -1,13 +1,11 @@
-from . import indicator
-
 """Compatibility facade for the refactor core.
 
 This module exposes a stable API for the new core/* modules while avoiding
 imports from controller.py to prevent circular dependencies.
 """
 
-from .feature import get_data, set_data, create_sketch
-from .legacy_api import get_or_create_euclid_sketch, reset_interaction_state
+from .feature import get_data, set_data, create_sketch  # noqa: F401
+from .legacy_api import get_or_create_euclid_sketch, reset_interaction_state  # noqa: F401
 from .core.undo import push_sketch_undo
 from .geom import LineEntity2D, CircleEntity2D
 from .math2d import normalize

@@ -2,7 +2,6 @@ import os
 import sys
 import inspect
 
-import FreeCAD as App
 import FreeCADGui as Gui
 
 

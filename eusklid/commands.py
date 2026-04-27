@@ -16,25 +16,20 @@ from .controller import (
     start_circle_center_tangent_session,
     start_circle_2tg_radius_session,
     start_circle_2pts_1tangent_session,
-    start_line_point_tangent_circle_session,
     start_line_parallel_u_tangent_circle_session,
     start_line_parallel_v_tangent_circle_session,
-    start_line_parallel_ref_tangent_circle_session,
     start_line_parallel_ref_series_session,
     start_line_parallel_ref_point_session,
     start_line_perpendicular_ref_point_session,
     start_line_grid_session,
     start_circle_to_polygon_session,
-    stop_active_session,
     get_or_create_euclid_sketch,
-    show_local_frame,
-    clear_all_indicators,
-    origin_mode_message,
     placeholder_message,
     path_start,
     path_close,
     path_end,
     path_export,
+    path_reopen_contour,
     end_sketch,
     undo_contextual,
 )
@@ -43,12 +38,16 @@ from .qt_compat import QtWidgets
 from .core.i18n import tr
 
 class _BaseCmd:
-    def IsActive(self): return True
+    def IsActive(self):
+        return True
 
 class _PlaceholderCmd(_BaseCmd):
     label = "Placeholder"
-    def GetResources(self): return {"MenuText":self.label,"ToolTip":self.label}
-    def Activated(self): placeholder_message(self.label)
+    def GetResources(self):
+        return {"MenuText": self.label, "ToolTip": self.label}
+
+    def Activated(self):
+        placeholder_message(self.label)
 
 
 class CmdNewSketch(_BaseCmd):
@@ -79,14 +78,16 @@ class CmdParallelU(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("// X"),"ToolTip":tr("Create lines parallel to X. Positive values go toward +Y.")}
     def Activated(self):
         values = ask_distance_series("Distances parallel to X (space separated). Positive values go toward +Y.")
-        if values is None: return
+        if values is None:
+            return
         create_parallel_axis("X", values, construction=True)
 
 class CmdParallelV(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("// Y"),"ToolTip":tr("Create lines parallel to Y. Positive values go toward +X.")}
     def Activated(self):
         values = ask_distance_series("Distances parallel to Y (space separated). Positive values go toward +X.")
-        if values is None: return
+        if values is None:
+            return
         create_parallel_axis("Y", values, construction=True)
 
 class CmdParallelRef(_BaseCmd):
@@ -161,7 +162,8 @@ class CmdCircleCenterRadius(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("Center / Radius"),"ToolTip":tr("Construction circle by center and radius")}
     def Activated(self):
         radius = ask_radius("Radius")
-        if radius is None or radius <= 0: return
+        if radius is None or radius <= 0:
+            return
         start_circle_center_radius_session(radius=radius, construction=True)
 
 class CmdCircleCenterPass(_BaseCmd):
@@ -176,7 +178,8 @@ class CmdCircle2PtsRadius(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("2 Anchors / Radius"),"ToolTip":tr("Construction circle through 2 anchors with given radius")}
     def Activated(self):
         radius = ask_radius("Radius")
-        if radius is None or radius <= 0: return
+        if radius is None or radius <= 0:
+            return
         start_circle_2pts_radius_session(radius=radius, choose_solution=choose_solution, construction=True)
 
 class CmdCircleCenterTg(_BaseCmd):
@@ -187,7 +190,8 @@ class CmdCircle2TgRadius(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("2 Tg / Radius"),"ToolTip":tr("Two tangent references (line/circle) and a radius. Multiple solutions are chosen graphically.")}
     def Activated(self):
         radius = ask_radius("Radius")
-        if radius is None or radius <= 0: return
+        if radius is None or radius <= 0:
+            return
         start_circle_2tg_radius_session(radius=radius, construction=True)
 
 

@@ -1,6 +1,5 @@
 import FreeCAD as App
 import Part
-import Sketcher
 from .feature import ensure_proxy, get_data
 from .geom import LineEntity2D, CircleEntity2D
 from .math2d import visible_segment_for_line

@@ -230,37 +230,6 @@ def _path_overlay_root(layer):
         return None
 
 
-
-
-def _path_request_redraw():
-    """Ask FreeCAD/Coin3D to repaint transient Path overlays now.
-
-    Coin3D scene graph updates are sometimes not repainted until the next mouse
-    event. This helper intentionally touches only the GUI/view layer; it does
-    not change Path state, selection state, closed paths, or exported geometry.
-    """
-    try:
-        if Gui.ActiveDocument is None:
-            return
-        view = Gui.ActiveDocument.ActiveView
-        if view is None:
-            return
-        for meth in ("update", "redraw"):
-            fn = getattr(view, meth, None)
-            if fn is None:
-                continue
-            try:
-                fn()
-                return
-            except Exception:
-                pass
-        try:
-            Gui.updateGui()
-        except Exception:
-            pass
-    except Exception:
-        pass
-
 def _path_overlay_clear(layer=None):
     layers = list(_PATH_OVERLAY_ROOTS.keys()) if layer is None else [layer]
     for key in layers:
@@ -1260,71 +1229,60 @@ class PathSession:
             except Exception:
                 pass
 
-    def _piece_start_uv(self, piece):
-        if piece.get("type") == "segment":
-            return piece.get("a")
-        return (
-            piece["center"][0] + piece["radius"] * math.cos(piece["a0"]),
-            piece["center"][1] + piece["radius"] * math.sin(piece["a0"]),
-        )
+    def render_preview(self):
+        clear_path_preview()
 
-    def _piece_end_uv(self, piece):
-        if piece.get("type") == "segment":
-            return piece.get("b")
-        return (
-            piece["center"][0] + piece["radius"] * math.cos(piece["a1"]),
-            piece["center"][1] + piece["radius"] * math.sin(piece["a1"]),
-        )
+        markers = []
 
-    def _draw_piece_with_fallback(self, layer, piece, color, width, alpha, seg_name, arc_name):
-        # Primary renderer: Coin3D overlay. Legacy Part::Feature is kept only as a
-        # fallback if Coin3D is unavailable, so the Path interaction remains usable.
-        try:
-            if _path_draw_piece(layer, self.plane, piece, color, width, alpha):
-                return None
-        except Exception:
-            pass
+        if self.current_entity_idx is None:
+            if self.last_mouse_uv is not None:
+                self._show_hover_marker(self.last_mouse_uv)
+            return
 
-        if piece["type"] == "segment":
-            return _make_line_segment(
-                self.plane,
-                piece["a"],
-                piece["b"],
-                color=color,
-                width=width,
-                transparency=alpha,
-                name=seg_name,
+        if self.current_point is not None:
+            markers.append((self.current_point, "marker", "euSKlidPathCurrent"))
+
+        if self.preview_pieces:
+            first_piece = self.preview_pieces[0]
+            last_piece = self.preview_pieces[-1]
+
+            start_uv = first_piece["a"] if first_piece["type"] == "segment" else (
+                first_piece["center"][0] + first_piece["radius"] * math.cos(first_piece["a0"]),
+                first_piece["center"][1] + first_piece["radius"] * math.sin(first_piece["a0"]),
+            )
+            end_uv = last_piece["b"] if last_piece["type"] == "segment" else (
+                last_piece["center"][0] + last_piece["radius"] * math.cos(last_piece["a1"]),
+                last_piece["center"][1] + last_piece["radius"] * math.sin(last_piece["a1"]),
             )
 
-        a0 = piece["a0"]
-        a1 = piece["a1"]
-        if piece["delta"] < 0.0:
-            a0, a1 = a1, a0
-        return _make_arc_segment(
-            self.plane,
-            piece["center"],
-            piece["radius"],
-            a0,
-            a1,
-            color=color,
-            width=width,
-            transparency=alpha,
-            name=arc_name,
-        )
+            markers.append((start_uv, "marker", "euSKlidPathPreviewStart"))
+            markers.append((end_uv, "snap", "euSKlidPathPreviewEnd"))
 
-    def render_all(self):
-        """Redraw the whole transient Path state in one pass.
+        cand_color, cand_width, cand_alpha = _path_style("candidate", (0.35, 1.0, 0.35), 5.0, 0)
 
-        This avoids transient visual dropouts caused by separate active/preview
-        redraws clearing one another during dense mouse/camera events. The Path
-        data stays unchanged; only the visual layers are refreshed.
-        """
+        fallback_objs = []
+        for piece in self.preview_pieces:
+            if _path_draw_piece("preview", self.plane, piece, cand_color, cand_width, cand_alpha):
+                continue
+            if piece["type"] == "segment":
+                obj = _make_line_segment(self.plane, piece["a"], piece["b"], color=cand_color, width=cand_width, transparency=cand_alpha, name="euSKlidPathPreviewSeg")
+            else:
+                a0 = piece["a0"]
+                a1 = piece["a1"]
+                if piece["delta"] < 0.0:
+                    a0, a1 = a1, a0
+                obj = _make_arc_segment(self.plane, piece["center"], piece["radius"], a0, a1, color=cand_color, width=cand_width, transparency=cand_alpha, name="euSKlidPathPreviewArc")
+            if obj is not None:
+                fallback_objs.append(obj)
+
+        global _PATH_PREVIEW_OBJECTS
+        _PATH_PREVIEW_OBJECTS = fallback_objs
+        self._show_markers(markers)
+
+    def render_active(self):
         clear_path_active()
         clear_path_preview()
-        clear_path_markers()
 
-        active_objs = []
-        preview_objs = []
         markers = []
 
         if self.start_point is not None:
@@ -1332,54 +1290,27 @@ class PathSession:
 
         if self.current_point is not None:
             markers.append((self.current_point, "marker", "euSKlidPathCurrent"))
-        elif self.last_mouse_uv is not None:
-            markers.append((self.last_mouse_uv, "hover", "euSKlidPathHover"))
 
         cur_color, cur_width, cur_alpha = _path_style("current", (1.0, 0.45, 0.0), 7.0, 0)
+
+        fallback_objs = []
         for piece in self.active_pieces:
-            obj = self._draw_piece_with_fallback(
-                "active",
-                piece,
-                cur_color,
-                cur_width,
-                cur_alpha,
-                "euSKlidPathSeg",
-                "euSKlidPathArc",
-            )
+            if _path_draw_piece("active", self.plane, piece, cur_color, cur_width, cur_alpha):
+                continue
+            if piece["type"] == "segment":
+                obj = _make_line_segment(self.plane, piece["a"], piece["b"], color=cur_color, width=cur_width, transparency=cur_alpha, name="euSKlidPathSeg")
+            else:
+                a0 = piece["a0"]
+                a1 = piece["a1"]
+                if piece["delta"] < 0.0:
+                    a0, a1 = a1, a0
+                obj = _make_arc_segment(self.plane, piece["center"], piece["radius"], a0, a1, color=cur_color, width=cur_width, transparency=cur_alpha, name="euSKlidPathArc")
             if obj is not None:
-                active_objs.append(obj)
+                fallback_objs.append(obj)
 
-        if self.preview_pieces:
-            first_piece = self.preview_pieces[0]
-            last_piece = self.preview_pieces[-1]
-            markers.append((self._piece_start_uv(first_piece), "marker", "euSKlidPathPreviewStart"))
-            markers.append((self._piece_end_uv(last_piece), "snap", "euSKlidPathPreviewEnd"))
-
-            cand_color, cand_width, cand_alpha = _path_style("candidate", (0.35, 1.0, 0.35), 5.0, 0)
-            for piece in self.preview_pieces:
-                obj = self._draw_piece_with_fallback(
-                    "preview",
-                    piece,
-                    cand_color,
-                    cand_width,
-                    cand_alpha,
-                    "euSKlidPathPreviewSeg",
-                    "euSKlidPathPreviewArc",
-                )
-                if obj is not None:
-                    preview_objs.append(obj)
-
-        global _PATH_ACTIVE_OBJECTS, _PATH_PREVIEW_OBJECTS
-        _PATH_ACTIVE_OBJECTS = active_objs
-        _PATH_PREVIEW_OBJECTS = preview_objs
+        global _PATH_ACTIVE_OBJECTS
+        _PATH_ACTIVE_OBJECTS = fallback_objs
         self._show_markers(markers)
-        _path_request_redraw()
-
-    def render_preview(self):
-        self.render_all()
-
-    def render_active(self):
-        self.render_all()
 
     def freeze_closed(self):
         global _CLOSED_PATHS, _PATH_CLOSED_OBJECTS

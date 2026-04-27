@@ -3,10 +3,9 @@ import math
 import FreeCAD as App
 import FreeCADGui as Gui
 
-from ..runtime import get_data
 from ..feature import get_data as feature_get_data, set_data as feature_set_data, ensure_proxy
 from ..geom import LineEntity2D, CircleEntity2D
-from ..math2d import point_to_line_distance, dist2, visible_segment_for_line
+from ..math2d import point_to_line_distance, dist2
 from ..core.snaps import snap_threshold_uv
 from .. import indicator
 

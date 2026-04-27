@@ -1006,7 +1006,8 @@ def __pick_point_and_callback(context, on_done, preview_fn=None):
 def _estimate_grid_family_count(view, plane, center_uv, direction, step):
     try:
         size = view.getSize()
-        w = int(size[0]); h = int(size[1])
+        w = int(size[0])
+        h = int(size[1])
         corners = [(0, 0), (w, 0), (0, h), (w, h)]
         uvs = []
         for sx, sy in corners:

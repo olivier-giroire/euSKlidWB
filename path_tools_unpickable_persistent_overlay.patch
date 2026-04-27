@@ -1,0 +1,61 @@
+--- a/eusklid/tools/path_tools.py
++++ b/eusklid/tools/path_tools.py
+@@
+-# Coin3D transient Path overlays. Document objects are kept only for closed paths.
+-_PATH_OVERLAY_ROOTS = {}
++# Coin3D transient Path overlays. Document objects are kept only for closed paths.
++# _PATH_OVERLAY_ROOTS stores the content separator for each layer.
++# Its parent owns SoPickStyle.UNPICKABLE and is never cleared.
++_PATH_OVERLAY_ROOTS = {}
+@@
+ def _path_overlay_root(layer):
+     if coin is None:
+         return None
+-    root = _PATH_OVERLAY_ROOTS.get(layer)
+-    if root is not None:
+-        return root
++    content = _PATH_OVERLAY_ROOTS.get(layer)
++    if content is not None:
++        return content
+     sg = _path_scene_graph()
+     if sg is None:
+         return None
+     try:
+-        root = coin.SoSeparator()
+-        sg.addChild(root)
+-        _PATH_OVERLAY_ROOTS[layer] = root
+-        return root
++        parent = coin.SoSeparator()
++
++        # CRITICAL: Path overlays must never intercept Sketcher edge clicks.
++        # This node is kept outside the cleared content separator, so redraws
++        # cannot accidentally remove the non-pickable state.
++        try:
++            pick = coin.SoPickStyle()
++            pick.style = coin.SoPickStyle.UNPICKABLE
++            parent.addChild(pick)
++        except Exception:
++            pass
++
++        content = coin.SoSeparator()
++        parent.addChild(content)
++
++        sg.addChild(parent)
++        _PATH_OVERLAY_ROOTS[layer] = content
++        return content
+     except Exception:
+         return None
+@@
+ def _path_overlay_clear(layer=None):
+     layers = list(_PATH_OVERLAY_ROOTS.keys()) if layer is None else [layer]
+     for key in layers:
+-        root = _PATH_OVERLAY_ROOTS.get(key)
+-        if root is None:
++        content = _PATH_OVERLAY_ROOTS.get(key)
++        if content is None:
+             continue
+         try:
+-            root.removeAllChildren()
++            content.removeAllChildren()
+         except Exception:
+             pass

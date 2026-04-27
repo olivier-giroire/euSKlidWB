@@ -1,4 +1,4 @@
-from .qt_compat import QtWidgets, QtCore
+from .qt_compat import QtWidgets
 from .plane import SketchPlane
 from .utils import parse_distance_series
 from .core.i18n import tr

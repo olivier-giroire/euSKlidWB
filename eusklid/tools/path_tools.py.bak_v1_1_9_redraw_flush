@@ -230,37 +230,6 @@ def _path_overlay_root(layer):
         return None
 
 
-
-
-def _path_request_redraw():
-    """Ask FreeCAD/Coin3D to repaint transient Path overlays now.
-
-    Coin3D scene graph updates are sometimes not repainted until the next mouse
-    event. This helper intentionally touches only the GUI/view layer; it does
-    not change Path state, selection state, closed paths, or exported geometry.
-    """
-    try:
-        if Gui.ActiveDocument is None:
-            return
-        view = Gui.ActiveDocument.ActiveView
-        if view is None:
-            return
-        for meth in ("update", "redraw"):
-            fn = getattr(view, meth, None)
-            if fn is None:
-                continue
-            try:
-                fn()
-                return
-            except Exception:
-                pass
-        try:
-            Gui.updateGui()
-        except Exception:
-            pass
-    except Exception:
-        pass
-
 def _path_overlay_clear(layer=None):
     layers = list(_PATH_OVERLAY_ROOTS.keys()) if layer is None else [layer]
     for key in layers:
@@ -1373,7 +1342,6 @@ class PathSession:
         _PATH_ACTIVE_OBJECTS = active_objs
         _PATH_PREVIEW_OBJECTS = preview_objs
         self._show_markers(markers)
-        _path_request_redraw()
 
     def render_preview(self):
         self.render_all()

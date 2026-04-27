@@ -181,6 +181,13 @@ def _ensure_root(layer):
     if sg is None:
         return None
     root = coin.SoSeparator()
+    # Overlay nodes are visual only; make them unpickable so they do not intercept mouse clicks.
+    try:
+        pick = coin.SoPickStyle()
+        pick.style = coin.SoPickStyle.UNPICKABLE
+        root.addChild(pick)
+    except Exception:
+        pass
     try:
         root.ref()
     except Exception:

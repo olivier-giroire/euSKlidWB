@@ -27,11 +27,8 @@ from ..feature import get_data, set_data
 from ..geom import LineEntity2D, CircleEntity2D
 from ..solvers.circle_solvers import (
     build_circle_center_radius,
-    build_circle_center_pass,
     build_circle_center_anchor,
-    build_circle_three_points,
     build_circles_from_three_anchors,
-    build_circles_two_points_radius,
     build_circles_from_two_anchors_radius,
 )
 from ..math2d import dist2, normalize
