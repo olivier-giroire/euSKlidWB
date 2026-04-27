@@ -7,72 +7,159 @@ from pivy import coin
 from .core.config import get_config
 
 # ---------------------------------------------------------------------------
-# Coin3D point overlays
+# euSKlid indicator overlay - Coin3D implementation
+#
+# Document objects are reserved for persistent geometry. All interactive
+# indicators in this module are Coin3D scenegraph nodes:
+# - snap / hover / selected / manual points
+# - preview lines / circles / polygons
+# - highlight lines / circles
+# - circle candidates
+# - arrows / direction fields (compatibility helpers)
 # ---------------------------------------------------------------------------
-# Temporary interactive points are rendered in the active 3D view scene graph,
-# not as FreeCAD document objects. This keeps the document clean and avoids
-# removeObject recursion / stale preview artefacts.
 
-_POINT_ROOTS = {}
-_DEFAULT_POINT_SIZE = 20.0
-_DEFAULT_POINT_ALPHA = 30
+_ROOTS = {}
+
+_LAYER_POINTS = "points"
+_LAYER_SELECTED = "selected"
+_LAYER_PREVIEW = "preview"
+_LAYER_HIGHLIGHT = "highlight"
+_LAYER_CANDIDATES = "candidates"
+_LAYER_ARROW = "arrow"
+_LAYER_FRAME = "frame"
+
+# Keep state minimal; refresh is explicit through show_* calls.
+_SNAP_STATE = None
+_MANUAL_STATE = None
+_SELECTED_STATE = None
 
 
-def _cfg():
+# ---------------------------------------------------------------------------
+# Configuration helpers
+# ---------------------------------------------------------------------------
+
+def _config():
     try:
-        return get_config()
+        return get_config() or {}
     except Exception:
         return {}
 
 
-def _cfg_points():
+def _dict_get(path, default):
+    cur = _config()
     try:
-        return _cfg().get("gui", {}).get("points", {})
+        for key in str(path).split("."):
+            if not isinstance(cur, dict) or key not in cur:
+                return default
+            cur = cur[key]
+        return cur
     except Exception:
-        return {}
+        return default
 
 
-def _cfg_point_size(default=_DEFAULT_POINT_SIZE):
+def _as_color(value, default):
     try:
-        return float(_cfg_points().get("size", default))
+        if value is None:
+            return tuple(default)
+        if isinstance(value, str):
+            s = value.strip().lstrip("#")
+            if len(s) == 6:
+                return (
+                    int(s[0:2], 16) / 255.0,
+                    int(s[2:4], 16) / 255.0,
+                    int(s[4:6], 16) / 255.0,
+                )
+        vals = tuple(float(v) for v in value)
+        if len(vals) >= 3:
+            return (vals[0], vals[1], vals[2])
+    except Exception:
+        pass
+    return tuple(default)
+
+
+def _as_float(value, default):
+    try:
+        return float(value)
     except Exception:
         return float(default)
 
 
-def _cfg_point_alpha(default=_DEFAULT_POINT_ALPHA):
+def _as_int(value, default):
     try:
-        return int(_cfg_points().get("alpha", default))
+        return int(value)
     except Exception:
         return int(default)
 
 
+def _points_cfg():
+    return _dict_get("gui.points", {}) or {}
+
+
+def _point_colors_cfg():
+    cfg = _points_cfg()
+    return cfg.get("colors", {}) if isinstance(cfg, dict) else {}
+
+
+def _point_size_px():
+    cfg = _points_cfg()
+    return _as_float(cfg.get("size", 20.0) if isinstance(cfg, dict) else 20.0, 20.0)
+
+
+def _point_alpha():
+    cfg = _points_cfg()
+    return _as_int(cfg.get("alpha", 30) if isinstance(cfg, dict) else 30, 30)
+
+
 def _point_color(kind="snap", manual=False):
-    colors = {}
-    try:
-        colors = _cfg_points().get("colors", {}) or {}
-    except Exception:
-        colors = {}
-
+    colors = _point_colors_cfg()
+    if manual or kind == "manual":
+        return _as_color(colors.get("fixed"), (0.7, 0.2, 1.0))
     if kind == "selected":
-        return tuple(colors.get("selected", (0.0, 0.5, 1.0)))
-    if kind == "manual" or manual:
-        return tuple(colors.get("fixed", (0.7, 0.2, 1.0)))
+        return _as_color(colors.get("selected"), (0.0, 0.5, 1.0))
     if kind == "hover":
-        return tuple(colors.get("hover", (1.0, 0.0, 1.0)))
+        return _as_color(colors.get("hover"), (1.0, 0.0, 1.0))
     if kind == "marker":
-        return tuple(colors.get("marker", (1.0, 0.5, 0.0)))
-    return tuple(colors.get("snap", (0.2, 0.9, 0.2)))
+        return _as_color(colors.get("marker"), (1.0, 0.5, 0.0))
+    return _as_color(colors.get("snap"), (0.2, 0.9, 0.2))
 
 
-def _point_transparency_to_alpha():
-    # FreeCAD transparency is 0 opaque -> 100 invisible.
-    # Coin alpha is 1 opaque -> 0 invisible.
-    try:
-        transparency = max(0, min(100, _cfg_point_alpha()))
-        return max(0.0, min(1.0, 1.0 - (float(transparency) / 100.0)))
-    except Exception:
-        return 0.7
+def _style_from_config(path, fallback_color, fallback_width, fallback_alpha=0):
+    cfg = _dict_get(path, {}) or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    color = _as_color(cfg.get("color"), fallback_color)
+    # Historical config sometimes uses "thickness" rather than "width".
+    width = _as_float(cfg.get("thickness", cfg.get("width", fallback_width)), fallback_width)
+    alpha = _as_int(cfg.get("alpha", fallback_alpha), fallback_alpha)
+    return color, width, alpha
 
+
+def _preview_style(kind="preview"):
+    # Single construction-preview style shared by line/circle/polygon previews.
+    return _style_from_config("preview", (0.1, 0.4, 1.0), 2.0, 70)
+
+
+def _highlight_style():
+    return _style_from_config("highlight", (1.0, 0.8, 0.1), 3.0, 40)
+
+
+def _candidate_style():
+    return _preview_style("candidate")
+
+
+def _arrow_style():
+    cfg = _dict_get("gui.arrows", {}) or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    color = _as_color(cfg.get("color"), (0.0, 0.5, 1.0))
+    width = _as_float(cfg.get("thickness", 4.0), 4.0)
+    alpha = _as_int(cfg.get("alpha", 0), 0)
+    return color, width, alpha
+
+
+# ---------------------------------------------------------------------------
+# Scenegraph helpers
+# ---------------------------------------------------------------------------
 
 def _active_scene_graph():
     try:
@@ -86,64 +173,116 @@ def _active_scene_graph():
         return None
 
 
-def _ensure_point_overlay(layer):
-    root = _POINT_ROOTS.get(layer)
+def _ensure_root(layer):
+    root = _ROOTS.get(layer)
     if root is not None:
         return root
-
     sg = _active_scene_graph()
     if sg is None:
         return None
-
     root = coin.SoSeparator()
+    try:
+        root.ref()
+    except Exception:
+        pass
     sg.addChild(root)
-    _POINT_ROOTS[layer] = root
+    _ROOTS[layer] = root
     return root
 
 
 def _clear_layer(layer):
-    root = _POINT_ROOTS.get(layer)
-    if root is not None:
+    root = _ROOTS.get(layer)
+    if root is None:
+        return
+    try:
+        root.removeAllChildren()
+    except Exception:
+        pass
+
+
+def _clear_layers(layers):
+    for layer in layers:
+        _clear_layer(layer)
+
+
+def _material(color, alpha=0):
+    mat = coin.SoMaterial()
+    try:
+        mat.diffuseColor.setValue(float(color[0]), float(color[1]), float(color[2]))
+        transparency = max(0.0, min(1.0, float(alpha) / 100.0))
+        mat.transparency.setValue(transparency)
+    except Exception:
+        pass
+    return mat
+
+
+def _line_style(width=2.0):
+    style = coin.SoDrawStyle()
+    try:
+        style.lineWidth.setValue(float(width))
+    except Exception:
         try:
-            root.removeAllChildren()
+            style.lineWidth = float(width)
         except Exception:
             pass
+    return style
 
 
-def _clear_all_layers():
-    for layer in list(_POINT_ROOTS.keys()):
-        _clear_layer(layer)
+def _coord_node(points):
+    coords = coin.SoCoordinate3()
+    vals = []
+    for p in points:
+        try:
+            vals.append((float(p.x), float(p.y), float(p.z)))
+        except Exception:
+            vals.append((float(p[0]), float(p[1]), float(p[2])))
+    try:
+        coords.point.setValues(0, len(vals), vals)
+    except Exception:
+        for i, v in enumerate(vals):
+            coords.point.set1Value(i, *v)
+    return coords
+
+
+def _line_node(points, color, width=2.0, alpha=0):
+    sep = coin.SoSeparator()
+    sep.addChild(_material(color, alpha))
+    sep.addChild(_line_style(width))
+    sep.addChild(_coord_node(points))
+    line = coin.SoLineSet()
+    try:
+        line.numVertices.setValues(0, 1, [len(points)])
+    except Exception:
+        pass
+    sep.addChild(line)
+    return sep
+
+
+def _plane_world(plane, uv):
+    return App.Vector(*plane.uv_to_world(uv))
 
 
 def _pixels_to_world(plane, uv, px):
     try:
         view = Gui.ActiveDocument.ActiveView
         cam = view.getCameraNode()
-
         try:
             _w, h = view.getSize()
             vh = max(1.0, float(h))
         except Exception:
             vh = 1000.0
-
-        world = App.Vector(*plane.uv_to_world(uv))
-
-        # Orthographic camera: height is world-space viewport height.
+        world = _plane_world(plane, uv)
         try:
             cam_height = float(cam.height.getValue())
             return max(1e-6, cam_height * float(px) / vh)
         except Exception:
             pass
-
-        # Perspective camera: use depth along camera direction.
         try:
             pos = cam.position.getValue()
             cam_pos = App.Vector(float(pos[0]), float(pos[1]), float(pos[2]))
-
             ori = cam.orientation.getValue()
             rot = App.Rotation(float(ori[0]), float(ori[1]), float(ori[2]), float(ori[3]))
             view_dir = rot.multVec(App.Vector(0.0, 0.0, -1.0))
-
             depth = max(1e-6, world.sub(cam_pos).dot(view_dir))
             angle = float(cam.heightAngle.getValue())
             visible_h = 2.0 * depth * math.tan(angle * 0.5)
@@ -152,208 +291,420 @@ def _pixels_to_world(plane, uv, px):
             pass
     except Exception:
         pass
-
     return max(1e-6, float(px) * 0.01)
 
 
-def _draw_point(world, radius, color):
-    sep = coin.SoSeparator()
-
-    mat = coin.SoMaterial()
+def _point_radius_world(plane, uv, size_px=None):
+    if size_px is None:
+        size_px = _point_size_px()
     try:
-        mat.diffuseColor.setValue(float(color[0]), float(color[1]), float(color[2]))
-        mat.transparency.setValue(1.0 - _point_transparency_to_alpha())
+        size_px = float(size_px)
     except Exception:
-        mat.diffuseColor.setValue(1.0, 0.0, 1.0)
+        size_px = _point_size_px()
+    # radius is half the configured point diameter-ish size.
+    r = _pixels_to_world(plane, uv, max(1.0, size_px) * 0.5)
+    return max(r, _pixels_to_world(plane, uv, 3.0))
 
+
+def _sphere_node(world, radius, color, alpha=0):
+    sep = coin.SoSeparator()
     tr = coin.SoTranslation()
     tr.translation.setValue(float(world.x), float(world.y), float(world.z))
-
     sphere = coin.SoSphere()
-    sphere.radius = float(radius)
-
-    sep.addChild(mat)
+    try:
+        sphere.radius.setValue(float(radius))
+    except Exception:
+        sphere.radius = float(radius)
+    sep.addChild(_material(color, alpha))
     sep.addChild(tr)
     sep.addChild(sphere)
     return sep
 
 
-def _draw_layer_point(layer, plane, uv, color, size=None):
-    root = _ensure_point_overlay(layer)
+def _arc_points(plane, center_uv, radius, a0, a1, steps=96):
+    try:
+        radius = float(radius)
+        a0 = float(a0)
+        a1 = float(a1)
+    except Exception:
+        return []
+    delta = a1 - a0
+    steps = max(8, min(192, int(abs(delta) / (2.0 * math.pi) * steps) + 8))
+    pts = []
+    for i in range(steps + 1):
+        t = i / float(steps)
+        a = a0 + delta * t
+        uv = (center_uv[0] + radius * math.cos(a), center_uv[1] + radius * math.sin(a))
+        pts.append(_plane_world(plane, uv))
+    return pts
+
+
+def _circle_points(plane, center_uv, radius, steps=128):
+    return _arc_points(plane, center_uv, radius, 0.0, 2.0 * math.pi, steps=steps)
+
+
+# ---------------------------------------------------------------------------
+# Point overlays
+# ---------------------------------------------------------------------------
+
+def _draw_layer_point(layer, plane, uv, color, size=None, manual=False):
+    root = _ensure_root(layer)
     if root is None:
         return None
-
     _clear_layer(layer)
-
     try:
-        world = App.Vector(*plane.uv_to_world(uv))
+        world = _plane_world(plane, uv)
+        radius = _point_radius_world(plane, uv, size)
+        alpha = _point_alpha()
+        root.addChild(_sphere_node(world, radius, color, alpha=alpha))
     except Exception:
         return None
-
-    try:
-        px = float(size) if size is not None else _cfg_point_size()
-    except Exception:
-        px = _cfg_point_size()
-    if px <= 0.0:
-        px = _DEFAULT_POINT_SIZE
-
-    radius = max(_pixels_to_world(plane, uv, px * 0.5), _pixels_to_world(plane, uv, 3.0))
-    root.addChild(_draw_point(world, radius=radius, color=color))
     return None
 
 
-# ---------------------------------------------------------------------------
-# Public point API
-# ---------------------------------------------------------------------------
-
 def show_snap_point(plane, uv, kind="snap", size=None):
-    # kind can be snap/hover/marker in a few call sites; keep it respected.
-    return _draw_layer_point("snap", plane, uv, _point_color(kind), size=size)
+    global _SNAP_STATE
+    _SNAP_STATE = {"kind": kind, "plane": plane, "uv": uv, "size": size}
+    return _draw_layer_point(_LAYER_POINTS, plane, uv, _point_color(kind), size=size)
 
 
 def show_hover_point(plane, uv, size=None):
-    return _draw_layer_point("hover", plane, uv, _point_color("hover"), size=size)
+    global _SNAP_STATE
+    _SNAP_STATE = {"kind": "hover", "plane": plane, "uv": uv, "size": size}
+    return _draw_layer_point(_LAYER_POINTS, plane, uv, _point_color("hover"), size=size)
 
 
 def show_marker_point(plane, uv, size=None):
-    return _draw_layer_point("hover", plane, uv, _point_color("marker"), size=size)
+    global _SNAP_STATE
+    _SNAP_STATE = {"kind": "marker", "plane": plane, "uv": uv, "size": size}
+    return _draw_layer_point(_LAYER_POINTS, plane, uv, _point_color("marker"), size=size)
 
 
 def show_manual_point(plane, uv, size=None):
-    return _draw_layer_point("manual", plane, uv, _point_color("manual", manual=True), size=size)
+    global _MANUAL_STATE
+    _MANUAL_STATE = {"kind": "manual", "plane": plane, "uv": uv, "size": size}
+    return _draw_layer_point(_LAYER_POINTS, plane, uv, _point_color("manual", manual=True), size=size)
 
 
 def show_selected_point(plane, uv, size=None, manual=False):
-    color = _point_color("manual", manual=True) if manual else _point_color("selected")
-    return _draw_layer_point("selected", plane, uv, color, size=size)
+    global _SELECTED_STATE
+    _SELECTED_STATE = {"kind": "point", "plane": plane, "uv": uv, "size": size, "manual": manual}
+    return _draw_layer_point(_LAYER_SELECTED, plane, uv, _point_color("selected", manual=manual), size=size)
 
 
 def show_selected_anchors(plane, anchors):
-    root = _ensure_point_overlay("selected")
+    global _SELECTED_STATE
+    root = _ensure_root(_LAYER_SELECTED)
     if root is None:
         return None
-
-    try:
-        root.removeAllChildren()
-    except Exception:
-        pass
-
-    for anchor in anchors or []:
+    _clear_layer(_LAYER_SELECTED)
+    stored = []
+    for a in anchors or []:
         try:
-            if anchor.get("kind") != "point":
-                continue
-            uv = anchor.get("point")
-            if uv is None:
-                continue
-            size = anchor.get("size", None)
-            manual = bool(anchor.get("manual", False))
-            color = _point_color("manual", manual=True) if manual else _point_color("selected")
-
-            world = App.Vector(*plane.uv_to_world(uv))
-            try:
-                px = float(size) if size is not None else _cfg_point_size()
-            except Exception:
-                px = _cfg_point_size()
-            radius = max(_pixels_to_world(plane, uv, px * 0.5), _pixels_to_world(plane, uv, 3.0))
-            root.addChild(_draw_point(world, radius=radius, color=color))
+            ak = a.get("kind")
         except Exception:
             continue
+        if ak == "point":
+            uv = a.get("point")
+            if uv is None:
+                continue
+            size = a.get("size", _point_size_px())
+            manual = bool(a.get("manual", False))
+            try:
+                world = _plane_world(plane, uv)
+                radius = _point_radius_world(plane, uv, size)
+                root.addChild(_sphere_node(world, radius, _point_color("selected", manual=manual), alpha=_point_alpha()))
+                stored.append(dict(a))
+            except Exception:
+                pass
+        elif ak == "line":
+            try:
+                show_selected_line(plane, a["origin"], a["direction"], clear=False)
+                stored.append(dict(a))
+            except Exception:
+                pass
+        elif ak == "circle":
+            try:
+                show_selected_circle(plane, a["center"], a["radius"], clear=False)
+                stored.append(dict(a))
+            except Exception:
+                pass
+    _SELECTED_STATE = {"kind": "anchors", "plane": plane, "anchors": stored}
     return None
 
 
 # ---------------------------------------------------------------------------
-# Compatibility cleanup API
+# Selected line/circle overlays
 # ---------------------------------------------------------------------------
-# These functions used to delete FreeCAD document objects. Points are now pure
-# Coin3D overlays, so cleanup only clears scene graph layers.
 
-def clear_all():
-    _clear_all_layers()
-
-
-def clear_snap():
-    _clear_layer("snap")
-
-
-def clear_manual():
-    _clear_layer("manual")
-
-
-def clear_selected():
-    _clear_layer("selected")
+def _visible_segment_for_line(origin_uv, direction_uv, half_len=1000.0):
+    try:
+        from .math2d import visible_segment_for_line
+        return visible_segment_for_line(origin_uv, direction_uv, half_len)
+    except Exception:
+        dx, dy = direction_uv
+        n = math.hypot(dx, dy) or 1.0
+        dx, dy = dx / n, dy / n
+        return (
+            (origin_uv[0] - dx * half_len, origin_uv[1] - dy * half_len),
+            (origin_uv[0] + dx * half_len, origin_uv[1] + dy * half_len),
+        )
 
 
-def clear_preview():
-    _clear_layer("hover")
+def show_selected_line(plane, origin_uv, direction_uv, half_len=1000.0, clear=True):
+    root = _ensure_root(_LAYER_SELECTED)
+    if root is None:
+        return None
+    if clear:
+        _clear_layer(_LAYER_SELECTED)
+    color = _point_color("selected")
+    a_uv, b_uv = _visible_segment_for_line(origin_uv, direction_uv, half_len)
+    root.addChild(_line_node([_plane_world(plane, a_uv), _plane_world(plane, b_uv)], color, width=3.0, alpha=20))
+    return None
 
 
-def clear_hover():
-    _clear_layer("hover")
+def show_selected_circle(plane, center_uv, radius, clear=True):
+    root = _ensure_root(_LAYER_SELECTED)
+    if root is None:
+        return None
+    if clear:
+        _clear_layer(_LAYER_SELECTED)
+    color = _point_color("selected")
+    pts = _circle_points(plane, center_uv, radius)
+    root.addChild(_line_node(pts, color, width=3.0, alpha=20))
+    return None
 
 
-def clear_highlight():
-    pass
+# ---------------------------------------------------------------------------
+# Preview / highlight / candidates
+# ---------------------------------------------------------------------------
+
+def show_preview_line(plane, p1_uv, p2_uv):
+    root = _ensure_root(_LAYER_PREVIEW)
+    if root is None:
+        return None
+    _clear_layer(_LAYER_PREVIEW)
+    color, width, alpha = _preview_style("line")
+    root.addChild(_line_node([_plane_world(plane, p1_uv), _plane_world(plane, p2_uv)], color, width=width, alpha=alpha))
+    return None
 
 
-def clear_candidates():
-    pass
+def show_preview_circle(plane, center_uv, radius):
+    root = _ensure_root(_LAYER_PREVIEW)
+    if root is None:
+        return None
+    _clear_layer(_LAYER_PREVIEW)
+    color, width, alpha = _preview_style("circle")
+    root.addChild(_line_node(_circle_points(plane, center_uv, radius), color, width=width, alpha=alpha))
+    return None
+
+
+def show_preview_polygon(plane, vertices_uv):
+    root = _ensure_root(_LAYER_PREVIEW)
+    if root is None:
+        return None
+    _clear_layer(_LAYER_PREVIEW)
+    if not vertices_uv or len(vertices_uv) < 2:
+        return None
+    pts = []
+    for uv in vertices_uv:
+        pts.append(_plane_world(plane, uv))
+    pts.append(_plane_world(plane, vertices_uv[0]))
+    color, width, alpha = _preview_style("line")
+    root.addChild(_line_node(pts, color, width=width, alpha=alpha))
+    return None
+
+
+def show_highlight_line(plane, origin_uv, direction_uv, half_len=1000.0):
+    root = _ensure_root(_LAYER_HIGHLIGHT)
+    if root is None:
+        return None
+    _clear_layer(_LAYER_HIGHLIGHT)
+    color, width, alpha = _highlight_style()
+    a_uv, b_uv = _visible_segment_for_line(origin_uv, direction_uv, half_len)
+    root.addChild(_line_node([_plane_world(plane, a_uv), _plane_world(plane, b_uv)], color, width=width, alpha=alpha))
+    return None
+
+
+def show_highlight_circle(plane, center_uv, radius):
+    root = _ensure_root(_LAYER_HIGHLIGHT)
+    if root is None:
+        return None
+    _clear_layer(_LAYER_HIGHLIGHT)
+    color, width, alpha = _highlight_style()
+    root.addChild(_line_node(_circle_points(plane, center_uv, radius), color, width=width, alpha=alpha))
+    return None
+
+
+def show_circle_candidates(plane, candidates):
+    root = _ensure_root(_LAYER_CANDIDATES)
+    if root is None:
+        return None
+    _clear_layer(_LAYER_CANDIDATES)
+    color, width, alpha = _candidate_style()
+    for cand in candidates or []:
+        try:
+            center = cand["center"]
+            radius = cand["radius"]
+        except Exception:
+            continue
+        root.addChild(_line_node(_circle_points(plane, center, radius), color, width=width, alpha=alpha))
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Arrows / frame compatibility
+# ---------------------------------------------------------------------------
+
+def show_uv_frame(plane, origin_uv=(0.0, 0.0), axis_len=140.0, head=35.0, from_refresh=False):
+    # XY-only policy: no custom U/V frame overlay.
+    clear_frame()
+    return None
+
+
+def show_arrow(plane, origin_uv, direction_uv, length=80.0, head=20.0):
+    root = _ensure_root(_LAYER_ARROW)
+    if root is None:
+        return None
+    _clear_layer(_LAYER_ARROW)
+    try:
+        from .math2d import normalize, scale, add, perp
+        d = normalize(direction_uv)
+        if d == (0.0, 0.0):
+            return None
+        n = normalize(perp(d))
+        length_w = _pixels_to_world(plane, origin_uv, _as_float(_dict_get("gui.arrows.length", length), length))
+        head_w = _pixels_to_world(plane, origin_uv, _as_float(_dict_get("gui.arrows.arrow_size", head), head))
+        tail = origin_uv
+        tip = add(tail, scale(d, length_w))
+        left = add(tip, add(scale(d, -head_w), scale(n, head_w * 0.6)))
+        right = add(tip, add(scale(d, -head_w), scale(n, -head_w * 0.6)))
+        color, width, alpha = _arrow_style()
+        for a, b in ((tail, tip), (tip, left), (tip, right)):
+            root.addChild(_line_node([_plane_world(plane, a), _plane_world(plane, b)], color, width=width, alpha=alpha))
+    except Exception:
+        pass
+    return None
+
+
+def show_direction_field(plane, origin_uv, ref_direction_uv, normal_uv, count=10, spacing=30.0, length=30.0, head=5.0):
+    root = _ensure_root(_LAYER_ARROW)
+    if root is None:
+        return None
+    _clear_layer(_LAYER_ARROW)
+    try:
+        from .math2d import normalize, scale, add, sub
+        ref_d = normalize(ref_direction_uv)
+        n = normalize(normal_uv)
+        if ref_d == (0.0, 0.0) or n == (0.0, 0.0):
+            return None
+        count = int(_dict_get("gui.arrows.count", count))
+        step_w = _pixels_to_world(plane, origin_uv, _as_float(_dict_get("gui.arrows.step", spacing), spacing))
+        len_w = _pixels_to_world(plane, origin_uv, _as_float(_dict_get("gui.arrows.length", length), length))
+        head_w = _pixels_to_world(plane, origin_uv, _as_float(_dict_get("gui.arrows.arrow_size", head), head))
+        start = sub(origin_uv, scale(ref_d, step_w * (count - 1) * 0.5))
+        color, width, alpha = _arrow_style()
+        for i in range(count):
+            base = add(start, scale(ref_d, step_w * i))
+            tip = add(base, scale(n, len_w))
+            left = add(tip, add(scale(n, -head_w), scale(ref_d, head_w * 0.35)))
+            right = add(tip, add(scale(n, -head_w), scale(ref_d, -head_w * 0.35)))
+            for a, b in ((base, tip), (tip, left), (tip, right)):
+                root.addChild(_line_node([_plane_world(plane, a), _plane_world(plane, b)], color, width=width, alpha=alpha))
+    except Exception:
+        pass
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Clear / refresh compatibility API
+# ---------------------------------------------------------------------------
+
+def clear_frame():
+    _clear_layer(_LAYER_FRAME)
 
 
 def clear_arrow():
-    pass
+    _clear_layer(_LAYER_ARROW)
 
 
-def clear_frame():
-    pass
+def clear_candidates():
+    _clear_layer(_LAYER_CANDIDATES)
+
+
+def clear_snap():
+    _clear_layer(_LAYER_POINTS)
+
+
+def clear_manual():
+    _clear_layer(_LAYER_POINTS)
+
+
+def clear_selected():
+    _clear_layer(_LAYER_SELECTED)
+
+
+def clear_preview():
+    _clear_layer(_LAYER_PREVIEW)
+
+
+def clear_highlight():
+    _clear_layer(_LAYER_HIGHLIGHT)
+
+
+def clear_all():
+    for layer in list(_ROOTS.keys()):
+        _clear_layer(layer)
 
 
 def reset_overlay_states(clear_frame_too=False):
-    _clear_all_layers()
+    global _SNAP_STATE, _MANUAL_STATE, _SELECTED_STATE
+    clear_snap()
+    clear_manual()
+    clear_selected()
+    clear_preview()
+    clear_highlight()
+    clear_candidates()
+    clear_arrow()
+    if clear_frame_too:
+        clear_frame()
+    _SNAP_STATE = None
+    _MANUAL_STATE = None
+    _SELECTED_STATE = None
 
 
 def refresh_camera_scaled_overlays():
-    # Current point radius is recomputed every time a point is shown. This hook
-    # is kept for callers that still expect it.
-    pass
-
-
-# ---------------------------------------------------------------------------
-# Legacy non-point indicator API kept as no-op for compatibility.
-# ---------------------------------------------------------------------------
-# Path preview/export are handled elsewhere; this file is now only responsible
-# for interactive point overlays.
-
-def show_preview_line(*args, **kwargs):
-    pass
-
-
-def show_preview_circle(*args, **kwargs):
-    pass
-
-
-def show_highlight_line(*args, **kwargs):
-    pass
-
-
-def show_highlight_circle(*args, **kwargs):
-    pass
-
-
-def show_circle_candidates(*args, **kwargs):
-    pass
-
-
-def show_preview_polygon(*args, **kwargs):
-    pass
-
-
-def show_uv_frame(*args, **kwargs):
+    # Coin3D nodes are redrawn on demand by show_* calls. This function remains
+    # for compatibility with existing controller calls.
     return None
 
 
-def show_arrow(*args, **kwargs):
-    pass
-
-
-def show_direction_field(*args, **kwargs):
-    pass
+def refresh_all_indicators():
+    # Minimal compatibility refresh: redraw only point layers whose state is known.
+    try:
+        if _SNAP_STATE is not None:
+            kind = _SNAP_STATE.get("kind", "snap")
+            plane = _SNAP_STATE.get("plane")
+            uv = _SNAP_STATE.get("uv")
+            size = _SNAP_STATE.get("size")
+            if plane is not None and uv is not None:
+                _draw_layer_point(_LAYER_POINTS, plane, uv, _point_color(kind), size=size)
+        if _MANUAL_STATE is not None:
+            plane = _MANUAL_STATE.get("plane")
+            uv = _MANUAL_STATE.get("uv")
+            size = _MANUAL_STATE.get("size")
+            if plane is not None and uv is not None:
+                _draw_layer_point(_LAYER_POINTS, plane, uv, _point_color("manual", manual=True), size=size)
+        if _SELECTED_STATE is not None:
+            if _SELECTED_STATE.get("kind") == "anchors":
+                show_selected_anchors(_SELECTED_STATE.get("plane"), _SELECTED_STATE.get("anchors", []))
+            else:
+                plane = _SELECTED_STATE.get("plane")
+                uv = _SELECTED_STATE.get("uv")
+                size = _SELECTED_STATE.get("size")
+                manual = bool(_SELECTED_STATE.get("manual", False))
+                if plane is not None and uv is not None:
+                    _draw_layer_point(_LAYER_SELECTED, plane, uv, _point_color("selected", manual=manual), size=size)
+    except Exception:
+        pass
+    return None

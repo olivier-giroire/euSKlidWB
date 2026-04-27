@@ -7,16 +7,18 @@ def make_spin(minv=0, maxv=9999, default=0):
     s = QtGui.QSpinBox()
     s.setRange(minv, maxv)
     s.setValue(default)
+    s.setFixedWidth(56)
     return s
 
 
 def make_color_btn():
     btn = QtGui.QPushButton()
-    btn.setFixedWidth(50)
+    btn.setFixedSize(18, 18)
+    btn.setToolTip(tr("Color"))
 
     def set_color(rgb):
         r, g, b = [int(max(0.0, min(1.0, c)) * 255) for c in rgb]
-        btn.setStyleSheet("background-color: rgb(%d,%d,%d);" % (r, g, b))
+        btn.setStyleSheet("QPushButton { background-color: rgb(%d,%d,%d); border: 1px solid #555; border-radius: 9px; padding: 0px; }" % (r, g, b))
         btn._rgb = (r / 255.0, g / 255.0, b / 255.0)
 
     def pick():
@@ -33,12 +35,18 @@ def get_color(btn):
     return getattr(btn, "_rgb", (1.0, 1.0, 1.0))
 
 
+def _set_color_btn(btn, rgb):
+    btn._rgb = tuple(rgb)
+    r, g, b = [int(max(0.0, min(1.0, c)) * 255) for c in btn._rgb]
+    btn.setStyleSheet("QPushButton { background-color: rgb(%d,%d,%d); border: 1px solid #555; border-radius: 9px; padding: 0px; }" % (r, g, b))
+
+
 class SettingsDialog(QtGui.QDialog):
     def __init__(self, parent=None):
         super(SettingsDialog, self).__init__(parent)
 
         self.setWindowTitle(tr("euSKlid Settings"))
-        self.resize(520, 650)
+        self.resize(620, 650)
 
         layout = QtGui.QVBoxLayout(self)
 
@@ -69,10 +77,29 @@ class SettingsDialog(QtGui.QDialog):
 
         self._load(load_config())
 
+    def _style_row(self, form, label, color_attr, thick_attr, alpha_attr, thick_default=2, alpha_default=0):
+        row = QtGui.QHBoxLayout()
+        color = make_color_btn()
+        thick = make_spin(0, 20, thick_default)
+        alpha = make_spin(0, 100, alpha_default)
+
+        setattr(self, color_attr, color)
+        setattr(self, thick_attr, thick)
+        setattr(self, alpha_attr, alpha)
+
+        row.addWidget(color)
+        row.addSpacing(8)
+        row.addWidget(QtGui.QLabel(tr("Thickness")))
+        row.addWidget(thick)
+        row.addSpacing(10)
+        row.addWidget(QtGui.QLabel(tr("Transparency")))
+        row.addWidget(alpha)
+        row.addStretch()
+        form.addRow(tr(label), row)
+
     def _build_gui_tab(self):
         w = QtGui.QWidget()
         v = QtGui.QVBoxLayout(w)
-
 
         g_ar = QtGui.QGroupBox(tr("Direction Arrows"))
         f = QtGui.QFormLayout(g_ar)
@@ -119,58 +146,17 @@ class SettingsDialog(QtGui.QDialog):
 
         g_construction = QtGui.QGroupBox(tr("Construction"))
         f = QtGui.QFormLayout(g_construction)
-        self.c_line_color = make_color_btn()
-        self.c_line_thick = make_spin(0, 20, 2)
-        self.c_line_alpha = make_spin(0, 100, 0)
-        f.addRow(tr("Color"), self.c_line_color)
-        f.addRow(tr("Thickness"), self.c_line_thick)
-        f.addRow(tr("Transparency"), self.c_line_alpha)
-
-        g_highlight = QtGui.QGroupBox(tr("Highlight"))
-        f = QtGui.QFormLayout(g_highlight)
-        self.h_color = make_color_btn()
-        self.h_thick = make_spin(0, 20, 3)
-        self.h_alpha = make_spin(0, 100, 40)
-        f.addRow(tr("Color"), self.h_color)
-        f.addRow(tr("Thickness"), self.h_thick)
-        f.addRow(tr("Transparency"), self.h_alpha)
+        self._style_row(f, "Primitives", "c_line_color", "c_line_thick", "c_line_alpha", 2, 0)
+        self._style_row(f, "Highlight", "h_color", "h_thick", "h_alpha", 3, 40)
+        self._style_row(f, "Preview", "pr_color", "pr_thick", "pr_alpha", 2, 70)
 
         g_path = QtGui.QGroupBox(tr("Path"))
-        v_path = QtGui.QVBoxLayout(g_path)
-
-        g_cur = QtGui.QGroupBox(tr("Current path"))
-        f = QtGui.QFormLayout(g_cur)
-        self.p_cur = make_color_btn()
-        self.p_cur_thick = make_spin(0, 20, 5)
-        self.p_cur_alpha = make_spin(0, 100, 0)
-        f.addRow(tr("Color"), self.p_cur)
-        f.addRow(tr("Thickness"), self.p_cur_thick)
-        f.addRow(tr("Transparency"), self.p_cur_alpha)
-
-        g_cand = QtGui.QGroupBox(tr("Candidate path"))
-        f = QtGui.QFormLayout(g_cand)
-        self.p_cand = make_color_btn()
-        self.p_cand_thick = make_spin(0, 20, 3)
-        self.p_cand_alpha = make_spin(0, 100, 0)
-        f.addRow(tr("Color"), self.p_cand)
-        f.addRow(tr("Thickness"), self.p_cand_thick)
-        f.addRow(tr("Transparency"), self.p_cand_alpha)
-
-        g_closed = QtGui.QGroupBox(tr("Closed path"))
-        f = QtGui.QFormLayout(g_closed)
-        self.p_closed = make_color_btn()
-        self.p_closed_thick = make_spin(0, 20, 6)
-        self.p_closed_alpha = make_spin(0, 100, 0)
-        f.addRow(tr("Color"), self.p_closed)
-        f.addRow(tr("Thickness"), self.p_closed_thick)
-        f.addRow(tr("Transparency"), self.p_closed_alpha)
-
-        v_path.addWidget(g_cur)
-        v_path.addWidget(g_cand)
-        v_path.addWidget(g_closed)
+        f = QtGui.QFormLayout(g_path)
+        self._style_row(f, "Current path", "p_cur", "p_cur_thick", "p_cur_alpha", 5, 0)
+        self._style_row(f, "Candidate path", "p_cand", "p_cand_thick", "p_cand_alpha", 3, 0)
+        self._style_row(f, "Closed path", "p_closed", "p_closed_thick", "p_closed_alpha", 6, 0)
 
         v.addWidget(g_construction)
-        v.addWidget(g_highlight)
         v.addWidget(g_path)
         v.addStretch()
         return w
@@ -228,6 +214,11 @@ class SettingsDialog(QtGui.QDialog):
         self._load(load_default_config())
 
     def _collect(self):
+        construction_style = {
+            "color": get_color(self.c_line_color),
+            "thickness": self.c_line_thick.value(),
+            "alpha": self.c_line_alpha.value(),
+        }
         return {
             "gui": {
                 "arrows": {
@@ -252,31 +243,20 @@ class SettingsDialog(QtGui.QDialog):
                 }
             },
             "construction": {
-                "lines": {
-                    "color": get_color(self.c_line_color),
-                    "thickness": self.c_line_thick.value(),
-                    "alpha": self.c_line_alpha.value()
-                },
-                "circles": {
-                    "color": get_color(self.c_line_color),
-                    "thickness": self.c_line_thick.value(),
-                    "alpha": self.c_line_alpha.value()
-                },
-                "grids": {
-                    "color": get_color(self.c_line_color),
-                    "thickness": self.c_line_thick.value(),
-                    "alpha": self.c_line_alpha.value()
-                },
-                "polygons": {
-                    "color": get_color(self.c_line_color),
-                    "thickness": self.c_line_thick.value(),
-                    "alpha": self.c_line_alpha.value()
-                }
+                "lines": dict(construction_style),
+                "circles": dict(construction_style),
+                "grids": dict(construction_style),
+                "polygons": dict(construction_style),
             },
             "highlight": {
                 "color": get_color(self.h_color),
                 "thickness": self.h_thick.value(),
                 "alpha": self.h_alpha.value()
+            },
+            "preview": {
+                "color": get_color(self.pr_color),
+                "thickness": self.pr_thick.value(),
+                "alpha": self.pr_alpha.value()
             },
             "path": {
                 "current": {
@@ -306,58 +286,60 @@ class SettingsDialog(QtGui.QDialog):
 
     def _load(self, cfg):
         try:
-
-            self.ar_color._rgb = tuple(cfg["gui"]["arrows"]["color"])
+            _set_color_btn(self.ar_color, cfg["gui"]["arrows"]["color"])
             self.ar_alpha.setValue(cfg["gui"]["arrows"]["alpha"])
-            self.ar_thick.setValue(cfg["gui"]["arrows"]["thickness"])
-            self.ar_len.setValue(cfg["gui"]["arrows"]["length"])
-            self.ar_arrow.setValue(cfg["gui"]["arrows"]["arrow_size"])
-            self.ar_step.setValue(cfg["gui"]["arrows"]["step"])
-            self.ar_count.setValue(cfg["gui"]["arrows"]["count"])
+            self.ar_thick.setValue(cfg["gui"]["arrows"].get("thickness", 5))
+            self.ar_len.setValue(cfg["gui"]["arrows"].get("length", 60))
+            self.ar_arrow.setValue(cfg["gui"]["arrows"].get("arrow_size", 10))
+            self.ar_step.setValue(cfg["gui"]["arrows"].get("step", 30))
+            self.ar_count.setValue(cfg["gui"]["arrows"].get("count", 15))
 
-            self.pt_size.setValue(cfg["gui"]["points"]["size"])
-            self.pt_alpha.setValue(cfg["gui"]["points"]["alpha"])
-            self.pt_sel._rgb = tuple(cfg["gui"]["points"]["colors"]["selected"])
-            self.pt_snap._rgb = tuple(cfg["gui"]["points"]["colors"]["snap"])
-            self.pt_fixed._rgb = tuple(cfg["gui"]["points"]["colors"]["fixed"])
-            self.pt_hover._rgb = tuple(cfg["gui"]["points"]["colors"]["hover"])
-            self.pt_marker._rgb = tuple(cfg["gui"]["points"]["colors"]["marker"])
+            self.pt_size.setValue(cfg["gui"]["points"].get("size", 20))
+            self.pt_alpha.setValue(cfg["gui"]["points"].get("alpha", 30))
+            colors = cfg["gui"]["points"].get("colors", {})
+            _set_color_btn(self.pt_sel, colors.get("selected", (0.2, 0.4, 1.0)))
+            _set_color_btn(self.pt_snap, colors.get("snap", (0.2, 1.0, 0.2)))
+            _set_color_btn(self.pt_fixed, colors.get("fixed", (1.0, 1.0, 0.0)))
+            _set_color_btn(self.pt_hover, colors.get("hover", (1.0, 0.0, 1.0)))
+            _set_color_btn(self.pt_marker, colors.get("marker", (1.0, 0.5, 0.0)))
 
-            self.c_line_color._rgb = tuple(cfg["construction"]["lines"]["color"])
-            self.c_line_thick.setValue(cfg["construction"]["lines"].get("thickness", 2))
-            self.c_line_alpha.setValue(cfg["construction"]["lines"].get("alpha", 0))
+            c = cfg.get("construction", {}).get("lines", {})
+            _set_color_btn(self.c_line_color, c.get("color", (1.0, 1.0, 1.0)))
+            self.c_line_thick.setValue(c.get("thickness", 2))
+            self.c_line_alpha.setValue(c.get("alpha", 0))
 
-            hcfg = cfg.get("work", {}).get("highlight", cfg.get("highlight", {}))
-            self.h_color._rgb = tuple(hcfg.get("color", (1.0, 0.8, 0.1)))
-            self.h_thick.setValue(hcfg.get("thickness", 3))
-            self.h_alpha.setValue(hcfg.get("alpha", 40))
+            h = cfg.get("highlight", {})
+            _set_color_btn(self.h_color, h.get("color", (1.0, 0.8, 0.1)))
+            self.h_thick.setValue(h.get("thickness", 3))
+            self.h_alpha.setValue(h.get("alpha", 40))
 
-            self.p_cur._rgb = tuple(cfg["path"]["current"]["color"])
-            self.p_cur_thick.setValue(cfg["path"]["current"].get("thickness", 5))
-            self.p_cur_alpha.setValue(cfg["path"]["current"].get("alpha", 0))
+            pvw = cfg.get("preview", {})
+            _set_color_btn(self.pr_color, pvw.get("color", (0.1, 0.4, 1.0)))
+            self.pr_thick.setValue(pvw.get("thickness", 2))
+            self.pr_alpha.setValue(pvw.get("alpha", 70))
 
-            self.p_cand._rgb = tuple(cfg["path"]["candidate"]["color"])
-            self.p_cand_thick.setValue(cfg["path"]["candidate"].get("thickness", 3))
-            self.p_cand_alpha.setValue(cfg["path"]["candidate"].get("alpha", 0))
+            p = cfg.get("path", {})
+            cur = p.get("current", {})
+            _set_color_btn(self.p_cur, cur.get("color", (1.0, 0.5, 0.0)))
+            self.p_cur_thick.setValue(cur.get("thickness", 5))
+            self.p_cur_alpha.setValue(cur.get("alpha", 0))
 
-            self.p_closed._rgb = tuple(cfg["path"]["closed"]["color"])
-            self.p_closed_thick.setValue(cfg["path"]["closed"].get("thickness", 6))
-            self.p_closed_alpha.setValue(cfg["path"]["closed"].get("alpha", 0))
+            cand = p.get("candidate", {})
+            _set_color_btn(self.p_cand, cand.get("color", (0.6, 1.0, 0.6)))
+            self.p_cand_thick.setValue(cand.get("thickness", 3))
+            self.p_cand_alpha.setValue(cand.get("alpha", 0))
 
-            self.snap_thresh.setValue(cfg["feeling"]["snap_threshold"])
+            closed = p.get("closed", {})
+            _set_color_btn(self.p_closed, closed.get("color", (0.0, 0.45, 0.0)))
+            self.p_closed_thick.setValue(closed.get("thickness", 6))
+            self.p_closed_alpha.setValue(closed.get("alpha", 0))
+
+            self.snap_thresh.setValue(cfg["feeling"].get("snap_threshold", 20))
             self.refresh_interval.setValue(cfg["feeling"].get("refresh_interval_ms", 120))
             self.console_messages.setChecked(bool(cfg["feeling"].get("console_messages", False)))
             self.help_messages.setChecked(bool(cfg["feeling"].get("help_messages", False)))
             idx = self.autogrid.findText(cfg["feeling"].get("autogrid", cfg["feeling"].get("autocorrect", "off")))
             if idx >= 0:
                 self.autogrid.setCurrentIndex(idx)
-
-            for btn in [
-                self.ar_color, self.pt_sel, self.pt_snap, self.pt_fixed,
-                self.pt_hover, self.pt_marker, self.c_line_color, self.h_color,
-                self.p_cur, self.p_cand, self.p_closed
-            ]:
-                r, g, b = [int(c * 255) for c in btn._rgb]
-                btn.setStyleSheet("background-color: rgb(%d,%d,%d);" % (r, g, b))
         except Exception:
             pass

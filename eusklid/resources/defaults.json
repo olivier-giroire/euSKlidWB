@@ -83,6 +83,24 @@
       "alpha": 0
     }
   },
+  "highlight": {
+    "color": [
+      1.0,
+      0.8,
+      0.1
+    ],
+    "thickness": 3,
+    "alpha": 40
+  },
+  "preview": {
+    "color": [
+      0.1,
+      0.4,
+      1.0
+    ],
+    "thickness": 2,
+    "alpha": 70
+  },
   "path": {
     "current": {
       "color": [
@@ -118,14 +136,5 @@
     "autogrid": "off",
     "console_messages": false,
     "help_messages": false
-  },
-  "highlight": {
-    "color": [
-      1.0,
-      0.8,
-      0.1
-    ],
-    "thickness": 3,
-    "alpha": 40
   }
 }

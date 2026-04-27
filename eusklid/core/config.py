@@ -75,6 +75,11 @@ def _hard_fallback():
             "thickness": 3,
             "alpha": 40
         },
+        "preview": {
+            "color": [0.1, 0.4, 1.0],
+            "thickness": 2,
+            "alpha": 70
+        },
         "path": {
             "current": {
                 "color": [1.0, 0.5, 0.0],
