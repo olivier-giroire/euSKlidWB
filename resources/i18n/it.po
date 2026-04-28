@@ -7,301 +7,115 @@ msgid "euSKlid"
 msgstr "euSKlid"
 
 msgid "euSKlid planar sketching workbench for FreeCAD"
-msgstr "euSKlid planar sketching workbench for FreeCAD"
+msgstr "Ambiente di disegno planare euSKlid per FreeCAD"
 
 msgid "Sketch"
-msgstr "Sketch"
+msgstr "Schizzo"
 
 msgid "Lines"
-msgstr "Lines"
+msgstr "Linee"
 
 msgid "Circles"
-msgstr "Circles"
+msgstr "Cerchi"
 
 msgid "Path"
 msgstr "Contorno"
 
 msgid "New Sketch"
-msgstr "New Sketch"
+msgstr "Nuovo schizzo"
 
 msgid "Create a new euSKlid sketch"
-msgstr "Create a new euSKlid sketch"
+msgstr "Creare un nuovo schizzo euSKlid"
 
 msgid "2 Anchors"
-msgstr "2 Anchors"
+msgstr "2 ancore"
 
 msgid "Create an infinite line through 2 anchors"
-msgstr "Create an infinite line through 2 anchors"
+msgstr "Creare una linea infinita attraverso 2 ancore"
 
 msgid "// U"
 msgstr "// U"
 
 msgid "Create lines parallel to U. Positive values go toward +V."
-msgstr "Create lines parallel to U. Positive values go toward +V."
+msgstr "Creare linee parallele a U. I valori positivi vanno verso +V."
 
 msgid "// V"
 msgstr "// V"
 
 msgid "Create lines parallel to V. Positive values go toward +U."
-msgstr "Create lines parallel to V. Positive values go toward +U."
+msgstr "Creare linee parallele a V. I valori positivi vanno verso +U."
 
 msgid "// Ref"
-msgstr "// Ref"
+msgstr "// Rif"
 
 msgid "Pick a reference, see positive-side arrow, then enter signed distances."
-msgstr "Pick a reference, see positive-side arrow, then enter signed distances."
+msgstr "Selezionare un riferimento, vedere la freccia del lato positivo, quindi inserire le distanze con segno."
 
 msgid "Grid"
-msgstr "Grid"
+msgstr "Griglia"
 
 msgid "Create a multi-series grid centered on a picked point"
-msgstr "Create a multi-series grid centered on a picked point"
+msgstr "Creare una griglia multi-serie centrata su un punto selezionato"
 
 msgid "Center / Radius"
-msgstr "Center / Radius"
+msgstr "Centro / Raggio"
 
 msgid "Construction circle by center and radius"
-msgstr "Construction circle by center and radius"
+msgstr "Cerchio di costruzione per centro e raggio"
 
 msgid "Center / Anchor"
-msgstr "Center / Anchor"
+msgstr "Centro / Ancoraggio"
 
 msgid "Construction circle by center and anchor (point, line tangency, circle tangency)"
-msgstr "Construction circle by center and anchor (point, line tangency, circle tangency)"
+msgstr "Cerchio di costruzione per centro e ancoraggio (punto, tangente linea, tangente cerchio)"
 
 msgid "3 Anchors"
-msgstr "3 Anchors"
+msgstr "3 ancore"
 
 msgid "Construction circle through 3 anchors"
-msgstr "Construction circle through 3 anchors"
+msgstr "Cerchio di costruzione attraverso 3 ancore"
 
 msgid "2 Anchors / Radius"
-msgstr "2 Anchors / Radius"
+msgstr "2 ancore / Raggio"
 
 msgid "Construction circle through 2 anchors with given radius"
-msgstr "Construction circle through 2 anchors with given radius"
-
-msgid "Center / tg"
-msgstr "Center / tg"
-
-msgid "Center then tangent reference (line or circle). Multiple solutions are chosen graphically."
-msgstr "Center then tangent reference (line or circle). Multiple solutions are chosen graphically."
-
-msgid "2 Tg / Radius"
-msgstr "2 Tg / Radius"
-
-msgid "Two tangent references (line/circle) and a radius. Multiple solutions are chosen graphically."
-msgstr "Two tangent references (line/circle) and a radius. Multiple solutions are chosen graphically."
+msgstr "Cerchio di costruzione attraverso 2 ancore con raggio dato"
 
 msgid "Start Path"
-msgstr "Avvia contorno"
-
-msgid "Start a new path"
-msgstr "Start a new path"
+msgstr "Inizia contorno"
 
 msgid "Close Path"
 msgstr "Chiudi contorno"
 
-msgid "Close and terminate the current path"
-msgstr "Close and terminate the current path"
-
 msgid "End Path"
 msgstr "Termina contorno"
 
-msgid "End the current path"
-msgstr "End the current path"
-
-msgid "Export Path to Sketcher"
-msgstr "Esporta contorno in Sketcher"
-
-msgid "Export the current path to Sketcher"
-msgstr "Export the current path to Sketcher"
-
-msgid "Export Construction to Sketcher"
-msgstr "Export Construction to Sketcher"
-
-msgid "Export all entities to native Sketcher"
-msgstr "Export all entities to native Sketcher"
-
-msgid "End Sketch"
-msgstr "End Sketch"
-
-msgid "Stop the active euSKlid tool"
-msgstr "Stop the active euSKlid tool"
-
 msgid "Settings"
-msgstr "Settings"
-
-msgid "euSKlid settings"
-msgstr "euSKlid settings"
-
-msgid "Enter 3 points, one per line, format: x y z\nP0 = origin\nP1 = local U direction\nP2 = plane orientation"
-msgstr "Enter 3 points, one per line, format: x y z\nP0 = origin\nP1 = local U direction\nP2 = plane orientation"
-
-msgid "Exactly 3 points are required."
-msgstr "Exactly 3 points are required."
-
-msgid "Invalid 3-point plane definition."
-msgstr "Invalid 3-point plane definition."
-
-msgid "Invalid distance series.\nExamples:\n0 10 20\n0 ; repeat 10 [0, 1, 2.5] step 7"
-msgstr "Invalid distance series.\nExamples:\n0 10 20\n0 ; repeat 10 [0, 1, 2.5] step 7"
-
-msgid "NB series"
-msgstr "NB series"
-
-msgid "count"
-msgstr "count"
-
-msgid "step"
-msgstr "step"
-
-msgid "angle"
-msgstr "angle"
-
-msgid "euSKlid Settings"
-msgstr "euSKlid Settings"
-
-msgid "GUI"
-msgstr "GUI"
-
-msgid "Work"
-msgstr "Work"
-
-msgid "Feeling"
-msgstr "Feeling"
-
-msgid "Reset"
-msgstr "Reset"
-
-msgid "Apply"
-msgstr "Apply"
-
-msgid "OK"
-msgstr "OK"
-
-msgid "Cancel"
-msgstr "Cancel"
-
-msgid "U/V Frame"
-msgstr "U/V Frame"
-
-msgid "Size (px)"
-msgstr "Size (px)"
-
-msgid "Arrow size"
-msgstr "Arrow size"
-
-msgid "Thickness"
-msgstr "Thickness"
-
-msgid "Direction Arrows"
-msgstr "Direction Arrows"
-
-msgid "Color"
-msgstr "Color"
-
-msgid "Transparency"
-msgstr "Transparency"
-
-msgid "Length"
-msgstr "Length"
-
-msgid "Step"
-msgstr "Step"
-
-msgid "Count"
-msgstr "Count"
-
-msgid "Points"
-msgstr "Points"
-
-msgid "Size"
-msgstr "Size"
-
-msgid "Selected"
-msgstr "Selected"
-
-msgid "Snap"
-msgstr "Snap"
-
-msgid "Fixed"
-msgstr "Fixed"
-
-msgid "Hover"
-msgstr "Hover"
-
-msgid "Markers"
-msgstr "Markers"
+msgstr "Impostazioni"
 
 msgid "Construction"
-msgstr "Construction"
+msgstr "Costruzione"
 
 msgid "Highlight"
-msgstr "Highlight"
-
-msgid "Current path"
-msgstr "Current path"
-
-msgid "Candidate path"
-msgstr "Candidate path"
-
-msgid "Closed path"
-msgstr "Closed path"
-
-msgid "Snap threshold (px)"
-msgstr "Snap threshold (px)"
-
-msgid "Autogrid"
-msgstr "Autogrid"
-
-msgid "Refresh interval (ms)"
-msgstr "Refresh interval (ms)"
-
-msgid "Console messages"
-msgstr "Console messages"
-
-msgid "Help messages"
-msgstr "Help messages"
-
-msgid "You can't touch this !"
-msgstr "Selezione non utilizzabile!"
-
-msgid "Expected: reference line"
-msgstr "Atteso: linea di riferimento"
-
-msgid "Expected: snap point â free point"
-msgstr "Expected: snap point â free point"
-
-msgid "Expected: snap point â tangent circle â circle â free point"
-msgstr "Expected: snap point â tangent circle â circle â free point"
-
-msgid "Expected: snap point â tangent anchor â line â circle â free point"
-msgstr "Expected: snap point â tangent anchor â line â circle â free point"
-
-msgid "Expected: snap point → free point"
-msgstr "Atteso: punto di aggancio → punto libero"
-
-msgid "Expected: snap point → tangent circle → circle → free point"
-msgstr "Atteso: punto di aggancio → cerchio tangente → cerchio → punto libero"
-
-msgid "Expected: snap point → tangent anchor → line → circle → free point"
-msgstr "Atteso: punto di aggancio → ancora tangente → linea → cerchio → punto libero"
-
-msgid "Open Sketch"
-msgstr "Apri sketch"
-
-msgid "Open an existing euSKlid sketch from the active document"
-msgstr "Apri uno sketch euSKlid esistente dal documento attivo"
-
-msgid "No active document."
-msgstr "Nessun documento attivo."
-
-msgid "No euSKlid sketch found in the active document."
-msgstr "Nessuno sketch euSKlid trovato nel documento attivo."
-
-msgid "Primitives"
-msgstr "Primitives"
+msgstr "Evidenziazione"
 
 msgid "Preview"
-msgstr "Preview"
+msgstr "Anteprima"
+
+msgid "Current path"
+msgstr "Contorno corrente"
+
+msgid "Candidate path"
+msgstr "Contorno candidato"
+
+msgid "Closed path"
+msgstr "Contorno chiuso"
+
+msgid "Color"
+msgstr "Colore"
+
+msgid "Thickness"
+msgstr "Spessore"
+
+msgid "Transparency"
+msgstr "Trasparenza"

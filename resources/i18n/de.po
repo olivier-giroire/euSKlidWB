@@ -1,0 +1,97 @@
+msgid ""
+msgstr ""
+"Language: de\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "euSKlid"
+msgstr "euSKlid"
+
+msgid "euSKlid planar sketching workbench for FreeCAD"
+msgstr "euSKlid Arbeitsbereich für planare Skizzen in FreeCAD"
+
+msgid "Sketch"
+msgstr "Skizze"
+
+msgid "Lines"
+msgstr "Linien"
+
+msgid "Circles"
+msgstr "Kreise"
+
+msgid "Path"
+msgstr "Kontur"
+
+msgid "New Sketch"
+msgstr "Neue Skizze"
+
+msgid "Create a new euSKlid sketch"
+msgstr "Eine neue euSKlid-Skizze erstellen"
+
+msgid "2 Anchors"
+msgstr "2 Anker"
+
+msgid "Create an infinite line through 2 anchors"
+msgstr "Eine unendliche Linie durch 2 Anker erstellen"
+
+msgid "// U"
+msgstr "// U"
+
+msgid "Create lines parallel to U. Positive values go toward +V."
+msgstr "Linien parallel zu U erstellen. Positive Werte gehen in Richtung +V."
+
+msgid "// V"
+msgstr "// V"
+
+msgid "Create lines parallel to V. Positive values go toward +U."
+msgstr "Linien parallel zu V erstellen. Positive Werte gehen in Richtung +U."
+
+msgid "// Ref"
+msgstr "// Ref"
+
+msgid "Pick a reference, see positive-side arrow, then enter signed distances."
+msgstr "Referenz auswählen, positiven Pfeil sehen und dann Vorzeichenabstände eingeben."
+
+msgid "Grid"
+msgstr "Gitter"
+
+msgid "Create a multi-series grid centered on a picked point"
+msgstr "Ein Mehrreihen-Gitter um einen ausgewählten Punkt erstellen"
+
+msgid "Start Path"
+msgstr "Kontur starten"
+
+msgid "Close Path"
+msgstr "Kontur schließen"
+
+msgid "End Path"
+msgstr "Kontur beenden"
+
+msgid "Settings"
+msgstr "Einstellungen"
+
+msgid "Construction"
+msgstr "Konstruktion"
+
+msgid "Highlight"
+msgstr "Hervorhebung"
+
+msgid "Preview"
+msgstr "Vorschau"
+
+msgid "Current path"
+msgstr "Aktuelle Kontur"
+
+msgid "Candidate path"
+msgstr "Vorgeschlagene Kontur"
+
+msgid "Closed path"
+msgstr "Geschlossene Kontur"
+
+msgid "Color"
+msgstr "Farbe"
+
+msgid "Thickness"
+msgstr "Dicke"
+
+msgid "Transparency"
+msgstr "Transparenz"
