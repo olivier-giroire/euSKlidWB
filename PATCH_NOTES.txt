@@ -1,2 +1,0 @@
-V1.1.7 micro-patch: indicator.py points rendered via Pivy/Coin3D overlays; legacy preview cleanup retained.
-Apply over v1.1.6 stable.
