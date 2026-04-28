@@ -1,7 +1,0 @@
-euSKlidWB V0.9.7 FINAL
-- Post-rename cleanup pass.
-- Workbench root: euSKlidWB.
-- Python package: eusklid.
-- FreeCAD command prefix: euSKlid_.
-- Historical rename note removed from distributable archive.
-- All Python files py_compile checked.

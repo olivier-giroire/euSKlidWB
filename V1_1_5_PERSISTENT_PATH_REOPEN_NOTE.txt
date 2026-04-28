@@ -1,7 +1,0 @@
-euSKlidWB V1.1.5 - Persistent contour reopen
-
-- Stores the latest closed Path on the euSKlid source object as JSON.
-- Export/Reopen can recover the last closed contour even if the UI PathSession cache was lost.
-- Keeps tagged Sketcher re-export behavior: only euSKlid-owned geometry/constraints are replaced in the target sketch.
-- Keeps XY-only behavior, sequence constraints, tangency and collinearity rules from the previous accepted versions.
-- The in-memory _CLOSED_PATHS cache is retained for multi-path sessions, but it is no longer the only source for re-export.

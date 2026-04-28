@@ -1,7 +1,0 @@
-euSKlidWB V1.0.2 EXPORT SEQUENCE EQUAL
-- Series //Ref repeat parser now preserves sequence metadata.
-- Series-generated construction lines store repeat/pattern metadata.
-- Closed paths store source construction entity metadata.
-- Export Path groups repeated sequence-derived line segments.
-- For each repeated group: one reference Distance constraint on the master segment, Equal constraints on siblings.
-- This is a first conservative pass; it avoids dimension spam and does not attempt full global stack solving.

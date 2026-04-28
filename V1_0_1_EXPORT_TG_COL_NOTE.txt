@@ -1,7 +1,0 @@
-euSKlidWB V1.0.1 EXPORT TG/COL
-- Export Path now preserves source construction entity id in exported geometry metadata.
-- For multiple Sketcher line segments extracted from the same construction line:
-  - only the longest segment receives Horizontal/Vertical when applicable;
-  - all other sibling segments receive Sketcher Tangent constraint to the master segment.
-- This uses FreeCAD Sketcher's Tangent/Collinear convergence and avoids overconstraining repeated collinear segments.
-- Existing coincident and segment/arc tangency export remains unchanged.

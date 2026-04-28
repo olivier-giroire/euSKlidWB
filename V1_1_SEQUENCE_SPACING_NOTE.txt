@@ -1,5 +1,0 @@
-euSKlidWB V1.1 SEQUENCE SPACING
-- Includes indicator.py anti-recursion no-op document cleanup patch.
-- Replaces unsafe Equal/Distance-on-contour-lengths with sequence spacing analysis.
-- Generates one oriented reference DistanceX/DistanceY per repeated interval kind.
-- Reports equality candidates but does not yet link them with Equal.

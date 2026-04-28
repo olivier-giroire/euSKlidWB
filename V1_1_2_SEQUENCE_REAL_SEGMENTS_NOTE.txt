@@ -1,9 +1,0 @@
-euSKlidWB V1.1.2 - sequence constraints on real segments
-
-- No auxiliary/construction segments are created for sequenced parallel-line spacing.
-- Tangency constraints are preserved.
-- Collinearity constraints between segments from the same construction line are preserved.
-- For each repeated spacing family, the first actual contour segment is the master:
-  * optional Horizontal/Vertical on the master only
-  * one Distance dimension on the master
-- Following actual contour segments receive Equal to the master.

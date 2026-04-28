@@ -1,9 +1,0 @@
-euSKlid V1.1.3 - XY-only simplification
-
-Base: accepted V1.1.2 master-first/axial reference.
-
-Changes:
-- U/V frame overlay removed; show_uv_frame is kept as a compatibility no-op.
-- FreeCAD X/Y/Z axis-cross is no longer hidden/restored by euSKlid.
-- New and legacy sketch data are interpreted on FreeCAD XY.
-- Axis-parallel labels are X/Y; legacy U/V internal names remain accepted as aliases.
