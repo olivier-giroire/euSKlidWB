@@ -130,3 +130,31 @@ to direct parametric design, specifically for:
 
 Everything is located in: ~/.local/share/FreeCAD/v{x-y}/Mod/euSKlidWB.
 And no, sorry, I don't know about Windows, but it should be in the documentation.
+
+---
+
+## 📦 Pictures ...
+
+- Constructions
+![Preview](docs/images/1-Constructions.png)
+
+- Path
+![Preview](docs/images/2-Path.png)
+
+- Raw export, quite overconstrained
+![Preview](docs/images/3-Export_brut.png)
+
+- Constrains correcte in FreeCAD's Sketcher
+![Preview](docs/images/4-Exported__constrains_corrected_in_FC.png)
+
+- Constrains modified in FreeCAD's Sketcher
+![Preview](docs/images/5-Exported__constrained_and_edited_in_FC.png)
+
+- Rev solid from the path
+![Preview](docs/images/6-RevD.png)
+
+- Fonctionnal flyby
+![Preview](docs/images/7-euSKlid_anim.gif)
+
+
+
