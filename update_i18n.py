@@ -140,7 +140,8 @@ _PO_ENTRY_RE = re.compile(
 
 
 def po_unescape(value: str) -> str:
-    return bytes(value, "utf-8").decode("unicode_escape")
+    import ast
+    return ast.literal_eval("\"" + value + "\"")
 
 
 def po_escape(value: str) -> str:

@@ -219,12 +219,6 @@ def language():
     return _LANG
 
 
-def reset():
-    global _TRANSLATIONS, _LANG
-    _TRANSLATIONS = None
-    _LANG = None
-
-
 def tr(text):
     global _TRANSLATIONS
     if _TRANSLATIONS is None:
@@ -233,11 +227,3 @@ def tr(text):
     return _TRANSLATIONS.get(text, text)
 
 
-def debug_info():
-    """Small helper for manual diagnosis from the FreeCAD Python console."""
-    return {
-        "language": language(),
-        "po_path": _po_path(language()),
-        "po_exists": os.path.exists(_po_path(language())),
-        "translation_count": len(_TRANSLATIONS or {}),
-    }

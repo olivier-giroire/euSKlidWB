@@ -26,15 +26,6 @@ class DistanceSeries(list):
         self.items = items or []
 
 
-def point_distance(a, b):
-    dx = a[0] - b[0]
-    dy = a[1] - b[1]
-    dz = 0.0
-    if len(a) > 2 and len(b) > 2:
-        dz = a[2] - b[2]
-    return math.sqrt(dx*dx + dy*dy + dz*dz)
-
-
 _NUMBER_RE = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)"
 
 

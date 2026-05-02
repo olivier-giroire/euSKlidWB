@@ -1,18 +1,3 @@
-# SPDX-License-Identifier: LGPL-2.1-or-later
-#
-# euSKlidWB - FreeCAD Workbench
-# Copyright (C) 2026 Olivier Giroire
-#
-# This library is free software; you can redistribute it and/or
-# modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; either
-# version 2.1 of the License, or (at your option) any later version.
-#
-# This library is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-# Lesser General Public License for more details.
-
 import os
 import sys
 import inspect
@@ -49,18 +34,16 @@ class euSKlidWorkbench(Gui.Workbench):
         cmds.register_commands()
 
         self.appendToolbar(tr("euSKlid"), [
-            "euSKlid_NewSketch",
-            "euSKlid_OpenSketch",
-            "euSKlid_EndSketch",
-            "euSKlid_Undo",
-            "euSKlid_Settings",
+            #"euSKlid_NewSketch",
+            #"euSKlid_OpenSketch",
+            #"euSKlid_EndSketch",
+            #"euSKlid_Settings",
         ])
 
         self.appendMenu(tr("Sketch"), [
             "euSKlid_NewSketch",
             "euSKlid_OpenSketch",
             "euSKlid_EndSketch",
-            "euSKlid_Undo",
             "euSKlid_Settings",
         ])
 
@@ -78,15 +61,12 @@ class euSKlidWorkbench(Gui.Workbench):
             "euSKlid_CircleCenterPass",
             "euSKlid_Circle3Pts",
             "euSKlid_Circle2PtsRadius",
-            "euSKlid_CircleToPolygon",
         ])
 
         self.appendMenu(tr("Path"), [
             "euSKlid_PathStart",
             "euSKlid_PathClose",
-            "euSKlid_PathEnd",
             "euSKlid_PathExport",
-            "euSKlid_PathReopenContour",
         ])
 
     def Activated(self):

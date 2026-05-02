@@ -40,14 +40,6 @@ def _show_cursor_status(uv, snap=None):
         pass
 
 
-def _clear_cursor_status():
-    try:
-        Gui.getMainWindow().statusBar().clearMessage()
-    except Exception:
-        pass
-
-
-
 def _help_expected(message):
     try:
         elog.help(message)
@@ -289,111 +281,6 @@ def pick_reference_line_once(view, context, on_done):
                 pass
 
     return _PickRefOnce()
-
-def pick_point_once(view, context, on_done):
-    plane = context.plane
-
-    class _PickPointOnce:
-        def __init__(self):
-            _help_expected("Expected: snap point → free point")
-            self._closed = False
-            self.cb_mouse = view.addEventCallback("SoMouseButtonEvent", self.on_mouse)
-            self.cb_move = view.addEventCallback("SoLocation2Event", self.on_move)
-            register_active_handler(self)
-
-        def _do_finish(self):
-            if self._closed:
-                return
-            self._closed = True
-            try:
-                view.removeEventCallback("SoMouseButtonEvent", self.cb_mouse)
-            except Exception:
-                pass
-            try:
-                view.removeEventCallback("SoLocation2Event", self.cb_move)
-            except Exception:
-                pass
-            unregister_active_handler(self)
-            clear_render_layers()
-
-        def finish(self):
-            QtCore.QTimer.singleShot(0, self._do_finish)
-
-        def on_mouse(self, info):
-            try:
-                if info.get("State") != "DOWN":
-                    return
-
-                button = info.get("Button")
-                if button == "BUTTON3":
-                    self.finish()
-                    return
-                if button != "BUTTON1":
-                    return
-
-                pos = info.get("Position")
-                if not pos:
-                    return
-
-                world = view.getPoint(pos[0], pos[1])
-                uv0 = plane.world_to_uv((float(world[0]), float(world[1]), float(world[2])))
-                if _force_free_point_requested(info):
-                    point = compute_free_point(context, uv0)
-                    snap = {"kind": "free", "point": point, "source": None, "forced": True}
-                else:
-                    snap = compute_contextual_snaps(context, uv0)
-                    point = snap["point"]
-                _show_cursor_status(point, snap)
-                try:
-                    context.metadata['last_anchor'] = {'kind': 'point', 'point': point, 'manual': snap.get('kind') == 'free'}
-                except Exception:
-                    pass
-
-                QtCore.QTimer.singleShot(0, lambda p=point: on_done(p))
-                self.finish()
-
-            except Exception:
-                self.finish()
-
-        def on_move(self, info):
-            try:
-                if self._closed:
-                    return
-
-                pos = info.get("Position")
-                if not pos:
-                    return
-
-                world = view.getPoint(pos[0], pos[1])
-                uv0 = plane.world_to_uv((float(world[0]), float(world[1]), float(world[2])))
-                if _force_free_point_requested(info):
-                    point = compute_free_point(context, uv0)
-                    snap = {"kind": "free", "point": point, "source": None, "forced": True}
-                else:
-                    snap = compute_contextual_snaps(context, uv0)
-                    point = snap["point"]
-                _show_cursor_status(point, snap)
-
-                try:
-                    from .. import indicator
-                    indicator.clear_highlight()
-                except Exception:
-                    pass
-
-                if snap["kind"] == "free":
-                    try:
-                        from .. import indicator
-                        indicator.clear_snap()
-                    except Exception:
-                        pass
-                else:
-                    render_snap_point(plane, point, snap["kind"])
-                _render_selected_from_context(context)
-
-            except Exception:
-                pass
-
-    return _PickPointOnce()
 
 def pick_line_anchor_once(view, context, on_done):
     plane = context.plane

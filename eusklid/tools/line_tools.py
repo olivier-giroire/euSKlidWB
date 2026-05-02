@@ -1,18 +1,3 @@
-# SPDX-License-Identifier: LGPL-2.1-or-later
-#
-# euSKlidWB - FreeCAD Workbench
-# Copyright (C) 2026 Olivier Giroire
-#
-# This library is free software; you can redistribute it and/or
-# modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; either
-# version 2.1 of the License, or (at your option) any later version.
-#
-# This library is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-# Lesser General Public License for more details.
-
 import math
 from ..core.context import CommandContext, StepSpec
 from ..core import logging as elog
@@ -26,7 +11,7 @@ from ..core.session import (
 )
 from ..core.picking import pick_reference_line_once, pick_line_anchor_once
 from ..core.snaps import compute_contextual_snaps, compute_free_point
-from ..core.render import render_preview_line, render_snap_point, clear_render_layers, render_highlight_circle
+from ..core.render import render_preview_line, render_preview_lines, render_snap_point, clear_render_layers, render_highlight_circle, render_highlight_line
 from ..runtime import (
     get_active_plane,
     get_or_create_euclid_sketch,
@@ -34,12 +19,12 @@ from ..runtime import (
     get_data,
     set_data,
 )
-from ..math2d import visible_segment_for_line, perp, normalize, project_point_on_line, dist2, lines_through_point_tangent_circle, parallel_lines_tangent_circle, parallel_ref_tangent_circle
+from ..math2d import visible_segment_for_line, perp, normalize, project_point_on_line, dist2
 from ..geom import LineEntity2D
 from ..qt_compat import QtCore
 import FreeCAD as App
 import FreeCADGui as Gui
-from ..solvers.line_solvers import build_point_angle_lines, build_lines_from_two_anchors
+from ..solvers.line_solvers import build_point_angle_series, build_lines_from_two_anchors
 
 
 def _help_expected(message):
@@ -195,6 +180,9 @@ def start_series_parallel_ref(sketch_obj=None, ask_distance_series=None, constru
         sketch_obj=sketch_obj,
         plane=get_active_plane(sketch_obj),
     ))
+    ctx.metadata["_reenter_fn"] = lambda: start_series_parallel_ref(
+        sketch_obj=sketch_obj, ask_distance_series=ask_distance_series, construction=construction
+    )
 
     def _done(ref):
         direction = normalize(ref["direction"])
@@ -222,60 +210,101 @@ def start_series_parallel_ref(sketch_obj=None, ask_distance_series=None, constru
         except Exception:
             pass
 
-        values = ask_distance_series("Distances for Series ∥/Ref.\nExamples:\n30,33,40,43\nrepeat 13 (0,1) origin 0 step 2.5\nrepeat 13 (0,1) org 0 step 2.5, repeat 6 (0,2) o 40 s 8") if ask_distance_series else None
-        if values is None:
-            cancel_command(ctx)
-            return
-
-        data = get_data(sketch_obj)
-        elog.info("Series //Ref: creating %d construction line(s)" % len(values))
-
-        series_meta = getattr(values, "meta", {}) or {}
-        series_items = getattr(values, "items", []) or []
-        series_id = "series-%d" % (len(data.entities) + 1)
-
-        for i, d in enumerate(values):
-            origin = (
-                ref["origin"][0] + normal[0] * d,
-                ref["origin"][1] + normal[1] * d,
-            )
-
-            item = series_items[i] if i < len(series_items) else {"distance": d, "index": i}
-            meta = {
-                "mode": "parallel-ref-series",
-                "series_id": series_id,
-                "series_kind": series_meta.get("kind", "list"),
-                "distance": float(d),
-                "sequence_index": int(i),
-            }
-
-            if item.get("block_kind") == "repeat":
-                meta.update({
-                    "series_kind": "repeat",
-                    "sequence_block_id": item.get("block_id", ""),
-                    "sequence_origin": float(item.get("origin", 0.0)),
-                    "sequence_repeat": int(item.get("repeat", 0)),
-                    "sequence_step": float(item.get("step", 0.0)),
-                    "sequence_pattern": list(item.get("pattern", [])),
-                    "repeat_index": int(item.get("repeat_index", 0)),
-                    "pattern_index": int(item.get("pattern_index", 0)),
-                    "pattern_value": float(item.get("pattern_value", 0.0)),
-                })
-
-            data.entities.append(
-                LineEntity2D(
-                    origin=origin,
-                    direction=direction,
-                    construction=construction,
-                    meta=meta,
+        def _segments_for_values(values):
+            segments = []
+            for d in values or []:
+                origin = (
+                    ref["origin"][0] + normal[0] * d,
+                    ref["origin"][1] + normal[1] * d,
                 )
-            )
+                segments.append(visible_segment_for_line(origin, direction, 1000.0))
+            return segments
 
-        set_data(sketch_obj, data)
-        App.ActiveDocument.recompute()
-        finish_command(ctx)
+        def _preview(values):
+            try:
+                if values is None:
+                    clear_render_layers()
+                else:
+                    render_preview_lines(ctx.plane, _segments_for_values(values))
+                Gui.updateGui()
+            except Exception:
+                pass
+
+        def _commit(values):
+            if values is None:
+                cancel_command(ctx)
+                return
+
+            data = get_data(sketch_obj)
+            elog.info("Series //Ref: creating %d construction line(s)" % len(values))
+
+            series_meta = getattr(values, "meta", {}) or {}
+            series_items = getattr(values, "items", []) or []
+            series_id = "series-%d" % (len(data.entities) + 1)
+
+            for i, d in enumerate(values):
+                origin = (
+                    ref["origin"][0] + normal[0] * d,
+                    ref["origin"][1] + normal[1] * d,
+                )
+
+                item = series_items[i] if i < len(series_items) else {"distance": d, "index": i}
+                meta = {
+                    "mode": "parallel-ref-series",
+                    "series_id": series_id,
+                    "series_kind": series_meta.get("kind", "list"),
+                    "distance": float(d),
+                    "sequence_index": int(i),
+                }
+
+                if item.get("block_kind") == "repeat":
+                    meta.update({
+                        "series_kind": "repeat",
+                        "sequence_block_id": item.get("block_id", ""),
+                        "sequence_origin": float(item.get("origin", 0.0)),
+                        "sequence_repeat": int(item.get("repeat", 0)),
+                        "sequence_step": float(item.get("step", 0.0)),
+                        "sequence_pattern": list(item.get("pattern", [])),
+                        "repeat_index": int(item.get("repeat_index", 0)),
+                        "pattern_index": int(item.get("pattern_index", 0)),
+                        "pattern_value": float(item.get("pattern_value", 0.0)),
+                    })
+
+                data.entities.append(
+                    LineEntity2D(
+                        origin=origin,
+                        direction=direction,
+                        construction=construction,
+                        meta=meta,
+                    )
+                )
+
+            set_data(sketch_obj, data)
+            App.ActiveDocument.recompute()
+            finish_command(ctx)
+
+        def _cancel():
+            cancel_command(ctx)
+
+        title = "Distances for Series ∥/Ref."
+        if ask_distance_series:
+            try:
+                dlg = ask_distance_series(title, on_preview=_preview, on_accept=_commit, on_cancel=_cancel)
+                if dlg is not None:
+                    return dlg
+            except TypeError:
+                values = ask_distance_series(title)
+                if values is None:
+                    cancel_command(ctx)
+                    return
+                _preview(values)
+                _commit(values)
+                return
+
+        cancel_command(ctx)
 
     return pick_reference_line_once(Gui.ActiveDocument.ActiveView, ctx, _done)
+
 
 
 def start_parallel_ref_point(sketch_obj=None, construction=True, perpendicular=False):
@@ -291,6 +320,9 @@ def start_parallel_ref_point(sketch_obj=None, construction=True, perpendicular=F
         plane=get_active_plane(sketch_obj),
     ))
     ctx.metadata["selected_anchors"] = []
+    ctx.metadata["_reenter_fn"] = lambda: start_parallel_ref_point(
+        sketch_obj=sketch_obj, construction=construction, perpendicular=perpendicular
+    )
 
     def _start_ref():
         ctx.metadata["selected_anchors"] = []
@@ -326,26 +358,53 @@ def _pick_best_line_candidate(candidates, uv):
     return best
 
 
-def start_point_angle(sketch_obj=None, ask_angle=None, construction=True):
+def start_point_angle(sketch_obj=None, ask_angle_series=None, construction=True):
+    """Create a series of lines through one point from a reference direction.
+
+    Workflow:
+    1. pick an angular reference line (construction line or X/Y axis)
+    2. pick a pass-through point
+    3. enter one or more angles in degrees
+
+    Angles are always measured counter-clockwise from the selected reference.
+    """
     sketch_obj = sketch_obj or get_or_create_euclid_sketch()
     ctx = begin_command(CommandContext(
-        name="point_angle",
+        name="ref_point_angle_series",
         primitive="line",
         steps=[
             StepSpec("pick_reference", "reference_line"),
             StepSpec("pick_point", "point"),
-            StepSpec("pick_solution", "solution_line"),
+            StepSpec("enter_angles", "angle_series"),
         ],
         sketch_obj=sketch_obj,
         plane=get_active_plane(sketch_obj),
     ))
+    ctx.metadata["selected_anchors"] = []
+    ctx.metadata["_reenter_fn"] = lambda: start_point_angle(
+        sketch_obj=sketch_obj, ask_angle_series=ask_angle_series, construction=construction
+    )
+
+    def _start_ref():
+        ctx.metadata["selected_anchors"] = []
+        return pick_reference_line_once(Gui.ActiveDocument.ActiveView, ctx, _done_ref)
 
     def _done_ref(ref):
+        ctx.metadata["selected_anchors"] = [{
+            "kind": ref.get("kind", "line"),
+            "origin": ref.get("origin", (0.0, 0.0)),
+            "direction": ref.get("direction", (1.0, 0.0)),
+        }]
+        push_command_restore(ctx, _start_ref)
+        return _pick_pass_point(ref)
+
+    def _pick_pass_point(ref):
         plane = ctx.plane
         view = Gui.ActiveDocument.ActiveView
 
         class _PickPointOnce:
             def __init__(self):
+                _help_expected("Expected: snap point → free point")
                 self._closed = False
                 self.cb_mouse = view.addEventCallback("SoMouseButtonEvent", self.on_mouse)
                 self.cb_move = view.addEventCallback("SoLocation2Event", self.on_move)
@@ -386,12 +445,12 @@ def start_point_angle(sketch_obj=None, ask_angle=None, construction=True):
                         return
 
                     world = view.getPoint(pos[0], pos[1])
-                    uv0 = plane.world_to_uv((float(world[0]), float(world[1]), float(world[2])))
+                    uv0 = ctx.plane.world_to_uv((float(world[0]), float(world[1]), float(world[2])))
                     snap = compute_contextual_snaps(ctx, uv0)
-                    uv = snap["point"]
+                    point = snap["point"]
 
                     self.finish()
-                    QtCore.QTimer.singleShot(0, lambda p=uv: _done_point(ref, p))
+                    QtCore.QTimer.singleShot(0, lambda p=point: _done_point(ref, p))
                 except Exception:
                     self.finish()
                     QtCore.QTimer.singleShot(0, lambda: cancel_command(ctx))
@@ -400,136 +459,101 @@ def start_point_angle(sketch_obj=None, ask_angle=None, construction=True):
                 try:
                     if self._closed:
                         return
-
                     pos = info.get("Position")
                     if not pos:
                         return
-
                     world = view.getPoint(pos[0], pos[1])
                     uv0 = plane.world_to_uv((float(world[0]), float(world[1]), float(world[2])))
                     snap = compute_contextual_snaps(ctx, uv0)
-                    uv = snap["point"]
-
+                    point = snap["point"]
+                    _show_cursor_status(point, snap)
+                    clear_render_layers()
+                    render_highlight_line(plane, ref["origin"], ref["direction"])
+                    if snap.get("kind") != "free":
+                        render_snap_point(plane, point, snap.get("kind", "snap"))
                     try:
                         from .. import indicator
-                        indicator.clear_highlight()
+                        indicator.show_selected_anchors(plane, ctx.metadata.get("selected_anchors", []))
                     except Exception:
                         pass
-
-                    if snap["kind"] == "free":
-                        try:
-                            from .. import indicator
-                            indicator.clear_snap()
-                        except Exception:
-                            pass
-                    else:
-                        render_snap_point(plane, uv, snap["kind"])
                 except Exception:
                     pass
 
         return _PickPointOnce()
 
     def _done_point(ref, point):
+        def _segments_for_angles(angles):
+            candidates = build_point_angle_series(ref, point, angles or [])
+            return [visible_segment_for_line(cand["origin"], cand["direction"], 1000.0) for cand in candidates]
+
+        def _preview(angles):
+            try:
+                if angles is None:
+                    clear_render_layers()
+                    return
+                clear_render_layers()
+                render_highlight_line(ctx.plane, ref["origin"], ref["direction"])
+                render_snap_point(ctx.plane, point, "anchor")
+                render_preview_lines(ctx.plane, _segments_for_angles(angles))
+                try:
+                    from .. import indicator
+                    indicator.show_selected_anchors(ctx.plane, ctx.metadata.get("selected_anchors", []))
+                except Exception:
+                    pass
+                Gui.updateGui()
+            except Exception:
+                pass
+
+        def _commit(angles):
+            if angles is None:
+                cancel_command(ctx)
+                return
+            candidates = build_point_angle_series(ref, point, angles)
+            if not candidates:
+                cancel_command(ctx)
+                return
+
+            try:
+                for cand in candidates:
+                    commit_line(
+                        sketch_obj,
+                        cand["origin"],
+                        cand["direction"],
+                        construction=construction,
+                        mode="point-angle-series",
+                    )
+                App.ActiveDocument.recompute()
+            except Exception:
+                cancel_command(ctx)
+                return
+
+            clear_render_layers()
+            finish_command(ctx)
+
+        def _cancel():
+            cancel_command(ctx)
+
+        if ask_angle_series:
+            try:
+                dlg = ask_angle_series(on_preview=_preview, on_accept=_commit, on_cancel=_cancel)
+                if dlg is not None:
+                    return dlg
+            except TypeError:
+                pass
+
         try:
-            angle = ask_angle() if ask_angle else None
+            angles = ask_angle_series() if ask_angle_series else None
         except Exception:
             cancel_command(ctx)
             return
 
-        if angle is None:
+        if angles is None:
             cancel_command(ctx)
             return
+        _preview(angles)
+        _commit(angles)
 
-        plane = ctx.plane
-        view = Gui.ActiveDocument.ActiveView
-        cands = build_point_angle_lines(ref, point, angle)
-
-        class _PickSolutionOnce:
-            def __init__(self):
-                self._closed = False
-                self.cb_mouse = view.addEventCallback("SoMouseButtonEvent", self.on_mouse)
-                self.cb_move = view.addEventCallback("SoLocation2Event", self.on_move)
-                register_active_handler(self)
-
-            def _do_finish(self):
-                if self._closed:
-                    return
-                self._closed = True
-                try:
-                    view.removeEventCallback("SoMouseButtonEvent", self.cb_mouse)
-                except Exception:
-                    pass
-                try:
-                    view.removeEventCallback("SoLocation2Event", self.cb_move)
-                except Exception:
-                    pass
-                unregister_active_handler(self)
-                clear_render_layers()
-
-            def finish(self):
-                QtCore.QTimer.singleShot(0, self._do_finish)
-
-            def on_mouse(self, info):
-                try:
-                    if info.get("State") != "DOWN":
-                        return
-                    button = info.get("Button")
-                    if button == "BUTTON3":
-                        self.finish()
-                        QtCore.QTimer.singleShot(0, lambda: cancel_command(ctx))
-                        return
-                    if button != "BUTTON1":
-                        return
-
-                    pos = info.get("Position")
-                    if not pos:
-                        return
-
-                    world = view.getPoint(pos[0], pos[1])
-                    uv0 = plane.world_to_uv((float(world[0]), float(world[1]), float(world[2])))
-                    best = _pick_best_line_candidate(cands, uv0) or cands[0]
-
-                    commit_line(
-                        sketch_obj,
-                        best["origin"],
-                        best["direction"],
-                        construction=construction,
-                        mode="point-angle",
-                    )
-                    self.finish()
-                    QtCore.QTimer.singleShot(0, lambda: finish_command(ctx))
-                except Exception:
-                    self.finish()
-                    QtCore.QTimer.singleShot(0, lambda: cancel_command(ctx))
-
-            def on_move(self, info):
-                try:
-                    if self._closed:
-                        return
-
-                    pos = info.get("Position")
-                    if not pos:
-                        return
-
-                    world = view.getPoint(pos[0], pos[1])
-                    uv0 = plane.world_to_uv((float(world[0]), float(world[1]), float(world[2])))
-
-                    try:
-                        from .. import indicator
-                        indicator.clear_snap()
-                        indicator.clear_highlight()
-                    except Exception:
-                        pass
-
-                    best = _pick_best_line_candidate(cands, uv0) or cands[0]
-                    a, b = visible_segment_for_line(best["origin"], best["direction"], 1000.0)
-                    render_preview_line(plane, a, b)
-                except Exception:
-                    pass
-
-        return _PickSolutionOnce()
-
-    return pick_reference_line_once(Gui.ActiveDocument.ActiveView, ctx, _done_ref)
+    return _start_ref()
 
 
 def _pick_line_solution_once(context, candidates, construction=True, mode="line-2anchors"):
@@ -643,6 +667,9 @@ def start_line_two_anchors(sketch_obj=None, construction=True):
         plane=get_active_plane(sketch_obj),
     ))
     ctx.metadata['selected_anchors'] = []
+    ctx.metadata["_reenter_fn"] = lambda: start_line_two_anchors(
+        sketch_obj=sketch_obj, construction=construction
+    )
 
     def _start_anchor1():
         ctx.metadata['selected_anchors'] = []
@@ -759,156 +786,6 @@ def _pick_circle_only_once(context, on_done, preview_fn=None):
                 pass
 
     return _PickCircleOnlyOnce()
-
-
-def start_line_point_tangent_circle(sketch_obj=None, construction=True):
-    sketch_obj = sketch_obj or get_or_create_euclid_sketch()
-    ctx = begin_command(CommandContext(
-        name="line_point_tangent_circle",
-        primitive="line",
-        steps=[
-            StepSpec("pick_point", "point"),
-            StepSpec("pick_circle", "circle"),
-            StepSpec("pick_solution", "solution_line"),
-        ],
-        sketch_obj=sketch_obj,
-        plane=get_active_plane(sketch_obj),
-    ))
-    ctx.metadata["selected_anchors"] = []
-
-    def _after_point(point):
-        a1 = ctx.metadata.get("last_anchor") or {"kind": "point", "point": point, "manual": False}
-        ctx.metadata["selected_anchors"] = [a1]
-
-        def _preview(circle, uv):
-            cands = lines_through_point_tangent_circle(point, circle["center"], circle["radius"])
-            if cands:
-                best = _pick_best_line_candidate(cands, uv) or cands[0]
-                a, b = visible_segment_for_line(best["origin"], best["direction"], 1000.0)
-                render_preview_line(ctx.plane, a, b)
-
-        def _done(circle, uv):
-            a2 = {"kind": "circle", "center": circle["center"], "radius": circle["radius"]}
-            ctx.metadata["selected_anchors"] = [a1, a2]
-            cands = lines_through_point_tangent_circle(point, circle["center"], circle["radius"])
-            if not cands:
-                cancel_command(ctx)
-                return
-            if len(cands) == 1:
-                c = cands[0]
-                commit_line(sketch_obj, c["origin"], c["direction"], construction=construction, mode=c.get("mode", "point-tg-circle"))
-                finish_command(ctx)
-                return
-            return _pick_line_solution_once(ctx, cands, construction=construction, mode="point-tg-circle")
-
-        return _pick_circle_only_once(ctx, _done, preview_fn=_preview)
-
-    return __pick_point_and_callback(ctx, _after_point)
-
-
-def _start_line_axis_tangent_circle(sketch_obj=None, direction=(1.0, 0.0), mode_name="parallel-u-tg-circle", construction=True):
-    sketch_obj = sketch_obj or get_or_create_euclid_sketch()
-    ctx = begin_command(CommandContext(
-        name=mode_name,
-        primitive="line",
-        steps=[
-            StepSpec("pick_circle", "circle"),
-            StepSpec("pick_solution", "solution_line"),
-        ],
-        sketch_obj=sketch_obj,
-        plane=get_active_plane(sketch_obj),
-    ))
-    ctx.metadata["selected_anchors"] = []
-
-    def _preview(circle, uv):
-        cands = parallel_lines_tangent_circle(direction, circle["center"], circle["radius"])
-        if cands:
-            best = _pick_best_line_candidate(cands, uv) or cands[0]
-            a, b = visible_segment_for_line(best["origin"], best["direction"], 1000.0)
-            render_preview_line(ctx.plane, a, b)
-
-    def _done(circle, uv):
-        a1 = {"kind": "circle", "center": circle["center"], "radius": circle["radius"]}
-        ctx.metadata["selected_anchors"] = [a1]
-        cands = parallel_lines_tangent_circle(direction, circle["center"], circle["radius"])
-        for c in cands:
-            c["mode"] = mode_name
-        if not cands:
-            cancel_command(ctx)
-            return
-        if len(cands) == 1:
-            c = cands[0]
-            commit_line(sketch_obj, c["origin"], c["direction"], construction=construction, mode=c["mode"])
-            finish_command(ctx)
-            return
-        return _pick_line_solution_once(ctx, cands, construction=construction, mode=mode_name)
-
-    return _pick_circle_only_once(ctx, _done, preview_fn=_preview)
-
-
-def start_line_parallel_u_tangent_circle(sketch_obj=None, construction=True):
-    return _start_line_axis_tangent_circle(
-        sketch_obj=sketch_obj,
-        direction=(1.0, 0.0),
-        mode_name="parallel-u-tg-circle",
-        construction=construction,
-    )
-
-
-def start_line_parallel_v_tangent_circle(sketch_obj=None, construction=True):
-    return _start_line_axis_tangent_circle(
-        sketch_obj=sketch_obj,
-        direction=(0.0, 1.0),
-        mode_name="parallel-v-tg-circle",
-        construction=construction,
-    )
-
-
-def start_line_parallel_ref_tangent_circle(sketch_obj=None, construction=True):
-    sketch_obj = sketch_obj or get_or_create_euclid_sketch()
-    ctx = begin_command(CommandContext(
-        name="parallel-ref-tg-circle",
-        primitive="line",
-        steps=[
-            StepSpec("pick_reference", "reference_line"),
-            StepSpec("pick_circle", "circle"),
-            StepSpec("pick_solution", "solution_line"),
-        ],
-        sketch_obj=sketch_obj,
-        plane=get_active_plane(sketch_obj),
-    ))
-    ctx.metadata["selected_anchors"] = []
-
-    def _after_ref(ref):
-        a1 = {"kind": ref.get("kind", "line"), "origin": ref["origin"], "direction": ref["direction"]}
-        ctx.metadata["selected_anchors"] = [a1]
-
-        def _preview(circle, uv):
-            cands = parallel_ref_tangent_circle(ref["origin"], ref["direction"], circle["center"], circle["radius"])
-            if cands:
-                best = _pick_best_line_candidate(cands, uv) or cands[0]
-                a, b = visible_segment_for_line(best["origin"], best["direction"], 1000.0)
-                render_preview_line(ctx.plane, a, b)
-
-        def _done(circle, uv):
-            a2 = {"kind": "circle", "center": circle["center"], "radius": circle["radius"]}
-            ctx.metadata["selected_anchors"] = [a1, a2]
-            cands = parallel_ref_tangent_circle(ref["origin"], ref["direction"], circle["center"], circle["radius"])
-            for c in cands:
-                c["mode"] = "parallel-ref-tg-circle"
-            if not cands:
-                cancel_command(ctx)
-                return
-            if len(cands) == 1:
-                c = cands[0]
-                commit_line(sketch_obj, c["origin"], c["direction"], construction=construction, mode=c["mode"])
-                finish_command(ctx)
-                return
-            return _pick_line_solution_once(ctx, cands, construction=construction, mode="parallel-ref-tg-circle")
-
-        return _pick_circle_only_once(ctx, _done, preview_fn=_preview)
-
-    return pick_reference_line_once(Gui.ActiveDocument.ActiveView, ctx, _after_ref)
 
 
 # helper reused locally
@@ -1080,10 +957,83 @@ def _grid_line_segment_from_intersections(origin, direction, other_lines, margin
         (origin[0] + d[0] * t1, origin[1] + d[1] * t1),
     )
 
-def start_line_grid(sketch_obj=None, grid_params=None, construction=True):
+
+def _build_grid_families(view, plane, center, grid_params):
+    families = []
+    for spec in (grid_params or {}).get("series", []):
+        try:
+            step = float(spec["step"])
+            angle_deg = float(spec["angle"])
+            requested_count = int(spec.get("count", 0))
+        except Exception:
+            continue
+
+        if step <= 0.0:
+            continue
+
+        a = math.radians(angle_deg)
+        direction = normalize((math.cos(a), math.sin(a)))
+        if direction == (0.0, 0.0):
+            continue
+
+        if requested_count <= 0:
+            requested_count = _estimate_grid_family_count(view, plane, center, direction, step)
+
+        requested_count = max(1, int(requested_count))
+        half = requested_count // 2
+        if requested_count % 2:
+            offsets = list(range(-half, half + 1))
+        else:
+            offsets = list(range(-half, half))
+
+        n = normalize(perp(direction))
+        lines = []
+        for k in offsets:
+            origin = (center[0] + n[0] * step * k, center[1] + n[1] * step * k)
+            lines.append({
+                "origin": origin,
+                "direction": direction,
+                "step": step,
+                "spec": spec,
+                "offset": k,
+            })
+
+        families.append({
+            "spec": spec,
+            "step": step,
+            "direction": direction,
+            "lines": lines,
+        })
+    return families
+
+
+def _grid_segments_from_families(families):
+    all_lines = []
+    for family in families:
+        for line in family["lines"]:
+            all_lines.append(line)
+
+    segments = []
+    for line in all_lines:
+        other_lines = [
+            (other["origin"], other["direction"])
+            for other in all_lines
+            if other is not line
+        ]
+        seg = _grid_line_segment_from_intersections(
+            line["origin"],
+            line["direction"],
+            other_lines,
+            margin=line["step"],
+        )
+        if seg is None:
+            seg = visible_segment_for_line(line["origin"], line["direction"], 1000.0)
+        segments.append(seg)
+    return segments
+
+
+def start_line_grid(sketch_obj=None, grid_params=None, ask_grid_parameters=None, construction=True):
     sketch_obj = sketch_obj or get_or_create_euclid_sketch()
-    if not grid_params:
-        return sketch_obj
 
     ctx = begin_command(CommandContext(
         name="line_grid",
@@ -1093,117 +1043,115 @@ def start_line_grid(sketch_obj=None, grid_params=None, construction=True):
         plane=get_active_plane(sketch_obj),
     ))
     ctx.metadata["selected_anchors"] = []
+    ctx.metadata["_reenter_fn"] = lambda: start_line_grid(
+        sketch_obj=sketch_obj, grid_params=grid_params, ask_grid_parameters=ask_grid_parameters, construction=construction
+    )
 
     def _start_center():
-        def _preview(center):
+        def _center_preview(center):
             try:
                 from .. import indicator
                 indicator.show_selected_anchors(ctx.plane, [{"kind": "point", "point": center, "manual": False, "size": 2.0}])
             except Exception:
                 pass
 
-        def _done(center):
-            data = get_data(sketch_obj)
-            view = Gui.ActiveDocument.ActiveView
-            from ..core.undo import push_sketch_undo
-            push_sketch_undo(sketch_obj)
+        def _done_center(center):
+            ctx.metadata["selected_anchors"] = [{"kind": "point", "point": center, "manual": False, "size": 2.0}]
 
-            families = []
-            for spec in grid_params.get("series", []):
+            def _preview(params):
                 try:
-                    step = float(spec["step"])
-                    angle_deg = float(spec["angle"])
-                    requested_count = int(spec.get("count", 0))
+                    clear_render_layers()
+                    try:
+                        from .. import indicator
+                        indicator.show_selected_anchors(ctx.plane, ctx.metadata.get("selected_anchors", []))
+                    except Exception:
+                        pass
+                    if params is None:
+                        return
+                    view = Gui.ActiveDocument.ActiveView
+                    families = _build_grid_families(view, ctx.plane, center, params)
+                    render_preview_lines(ctx.plane, _grid_segments_from_families(families))
+                    Gui.updateGui()
                 except Exception:
-                    continue
+                    pass
 
-                if step <= 0.0:
-                    continue
+            def _commit(params):
+                if params is None:
+                    cancel_command(ctx)
+                    return
 
-                a = math.radians(angle_deg)
-                direction = normalize((math.cos(a), math.sin(a)))
-                if direction == (0.0, 0.0):
-                    continue
+                data = get_data(sketch_obj)
+                view = Gui.ActiveDocument.ActiveView
+                from ..core.undo import push_sketch_undo
+                push_sketch_undo(sketch_obj)
 
-                if requested_count <= 0:
-                    requested_count = _estimate_grid_family_count(view, ctx.plane, center, direction, step)
+                families = _build_grid_families(view, ctx.plane, center, params)
+                all_lines = []
+                for family in families:
+                    for line in family["lines"]:
+                        all_lines.append(line)
 
-                requested_count = max(1, int(requested_count))
-                half = requested_count // 2
-                if requested_count % 2:
-                    offsets = list(range(-half, half + 1))
-                else:
-                    offsets = list(range(-half, half))
+                total_grid_lines = len(all_lines)
+                elog.info("Grid: creating %d construction line(s) in %d series" % (total_grid_lines, len(families)))
 
-                n = normalize(perp(direction))
-                lines = []
-                for k in offsets:
-                    origin = (center[0] + n[0] * step * k, center[1] + n[1] * step * k)
-                    lines.append({
-                        "origin": origin,
-                        "direction": direction,
-                        "step": step,
-                        "spec": spec,
-                        "offset": k,
-                    })
-
-                families.append({
-                    "spec": spec,
-                    "step": step,
-                    "direction": direction,
-                    "lines": lines,
-                })
-
-            all_lines = []
-            total_grid_lines = sum(len(family["lines"]) for family in families)
-            elog.info("Grid: creating %d construction line(s) in %d series" % (total_grid_lines, len(families)))
-
-            for family in families:
-                for line in family["lines"]:
-                    all_lines.append(line)
-
-            total_grid_lines = sum(len(family["lines"]) for family in families)
-            elog.info("Grid: creating %d construction line(s) in %d series" % (total_grid_lines, len(families)))
-
-            for family in families:
-                for line in family["lines"]:
-                    other_lines = [
-                        (other["origin"], other["direction"])
-                        for other in all_lines
-                        if other is not line
-                    ]
-                    seg = _grid_line_segment_from_intersections(
-                        line["origin"],
-                        line["direction"],
-                        other_lines,
-                        margin=line["step"],
-                    )
-
-                    meta = {
-                        "mode": "grid",
-                        "series": line["spec"].get("name", "?"),
-                        "center": center,
-                        "grid_count": len(family["lines"]),
-                        "grid_step": line["step"],
-                    }
-                    if seg is not None:
-                        meta["segment_a"] = seg[0]
-                        meta["segment_b"] = seg[1]
-
-                    data.entities.append(
-                        LineEntity2D(
-                            origin=line["origin"],
-                            direction=line["direction"],
-                            construction=construction,
-                            meta=meta,
+                for family in families:
+                    for line in family["lines"]:
+                        other_lines = [
+                            (other["origin"], other["direction"])
+                            for other in all_lines
+                            if other is not line
+                        ]
+                        seg = _grid_line_segment_from_intersections(
+                            line["origin"],
+                            line["direction"],
+                            other_lines,
+                            margin=line["step"],
                         )
-                    )
 
-            set_data(sketch_obj, data)
-            App.ActiveDocument.recompute()
-            finish_command(ctx)
+                        meta = {
+                            "mode": "grid",
+                            "series": line["spec"].get("name", "?"),
+                            "center": center,
+                            "grid_count": len(family["lines"]),
+                            "grid_step": line["step"],
+                        }
+                        if seg is not None:
+                            meta["segment_a"] = seg[0]
+                            meta["segment_b"] = seg[1]
+
+                        data.entities.append(
+                            LineEntity2D(
+                                origin=line["origin"],
+                                direction=line["direction"],
+                                construction=construction,
+                                meta=meta,
+                            )
+                        )
+
+                set_data(sketch_obj, data)
+                App.ActiveDocument.recompute()
+                clear_render_layers()
+                finish_command(ctx)
+
+            def _cancel():
+                cancel_command(ctx)
+
+            if ask_grid_parameters:
+                try:
+                    dlg = ask_grid_parameters(on_preview=_preview, on_accept=_commit, on_cancel=_cancel)
+                    if dlg is not None:
+                        return dlg
+                except TypeError:
+                    pass
+
+            params = grid_params
+            if params is None:
+                cancel_command(ctx)
+                return
+            _preview(params)
+            _commit(params)
 
         push_command_restore(ctx, _start_center)
-        return __pick_point_and_callback(ctx, _done, preview_fn=_preview)
+        return __pick_point_and_callback(ctx, _done_center, preview_fn=_center_preview)
 
     return _start_center()

@@ -60,30 +60,6 @@ def ensure_euclid_groups(doc=None):
     return root
 
 
-def get_root_group(doc=None):
-    doc = doc or App.ActiveDocument
-    if doc is None:
-        return None
-    ensure_euclid_groups(doc)
-    return doc.getObject(ROOT_NAME)
-
-
-def get_frame_group(doc=None):
-    doc = doc or App.ActiveDocument
-    if doc is None:
-        return None
-    ensure_euclid_groups(doc)
-    return doc.getObject(FRAME_NAME)
-
-
-def get_indicators_group(doc=None):
-    doc = doc or App.ActiveDocument
-    if doc is None:
-        return None
-    ensure_euclid_groups(doc)
-    return doc.getObject(INDICATORS_NAME)
-
-
 def get_transient_group(doc=None):
     doc = doc or App.ActiveDocument
     if doc is None:

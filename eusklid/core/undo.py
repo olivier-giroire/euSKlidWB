@@ -35,13 +35,6 @@ def push_sketch_undo(sketch_obj):
         pass
 
 
-def has_sketch_undo(sketch_obj):
-    try:
-        return len(_stack_for(sketch_obj)) > 0
-    except Exception:
-        return False
-
-
 def undo_last_sketch_edit(sketch_obj):
     try:
         stack = _stack_for(sketch_obj)

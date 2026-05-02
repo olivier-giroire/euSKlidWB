@@ -330,6 +330,9 @@ def start_circle_center_radius(sketch_obj=None, radius=None, construction=True):
         sketch_obj=sketch_obj,
         plane=get_active_plane(sketch_obj),
     ))
+    ctx.metadata["_reenter_fn"] = lambda: start_circle_center_radius(
+        sketch_obj=sketch_obj, radius=radius, construction=construction
+    )
 
     def _start_center():
         def _preview(center):
@@ -366,6 +369,9 @@ def start_circle_center_pass(sketch_obj=None, construction=True):
         plane=get_active_plane(sketch_obj),
     ))
     ctx.metadata["selected_anchors"] = []
+    ctx.metadata["_reenter_fn"] = lambda: start_circle_center_pass(
+        sketch_obj=sketch_obj, construction=construction
+    )
 
     def _start_center():
         ctx.metadata["selected_anchors"] = []
@@ -411,6 +417,9 @@ def start_circle_three_anchors(sketch_obj=None, construction=True):
         plane=get_active_plane(sketch_obj),
     ))
     ctx.metadata['selected_anchors'] = []
+    ctx.metadata["_reenter_fn"] = lambda: start_circle_three_anchors(
+        sketch_obj=sketch_obj, construction=construction
+    )
 
     def _start_a1():
         ctx.metadata['selected_anchors'] = []
@@ -477,6 +486,9 @@ def start_circle_two_anchors_radius(sketch_obj=None, radius=None, construction=T
         plane=get_active_plane(sketch_obj),
     ))
     ctx.metadata["selected_anchors"] = []
+    ctx.metadata["_reenter_fn"] = lambda: start_circle_two_anchors_radius(
+        sketch_obj=sketch_obj, radius=radius, construction=construction
+    )
 
     def _start_a1():
         ctx.metadata["selected_anchors"] = []

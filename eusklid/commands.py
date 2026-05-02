@@ -1,69 +1,32 @@
-# SPDX-License-Identifier: LGPL-2.1-or-later
-#
-# euSKlidWB - FreeCAD Workbench
-# Copyright (C) 2026 Olivier Giroire
-#
-# This library is free software; you can redistribute it and/or
-# modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; either
-# version 2.1 of the License, or (at your option) any later version.
-#
-# This library is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-# Lesser General Public License for more details.
-
 import FreeCAD as App
 import FreeCADGui as Gui
-from .dialogs import ask_distance_series, ask_radius, choose_solution, ask_grid_parameters, ask_polygon_parameters
+from .dialogs import ask_distance_series, ask_angle_series, ask_radius, choose_solution, ask_grid_parameters
 from .plane import SketchPlane
 from .controller import (
     create_sketch_on_plane,
     open_eusklid_sketch,
     start_line_2pts_session,
-    start_parallel_reference_session,
-    create_parallel_axis,
     start_point_angle_session,
     start_circle_center_radius_session,
     start_circle_center_pass_session,
     start_circle_3pts_session,
     start_circle_2pts_radius_session,
-    start_circle_center_tangent_session,
-    start_circle_2tg_radius_session,
-    start_circle_2pts_1tangent_session,
-    start_line_parallel_u_tangent_circle_session,
-    start_line_parallel_v_tangent_circle_session,
     start_line_parallel_ref_series_session,
     start_line_parallel_ref_point_session,
     start_line_perpendicular_ref_point_session,
     start_line_grid_session,
-    start_circle_to_polygon_session,
-    get_or_create_euclid_sketch,
-    placeholder_message,
     path_start,
     path_close,
-    path_end,
     path_export,
-    path_reopen_contour,
     end_sketch,
     undo_contextual,
 )
-from .exporter import export_to_native_sketch
 from .qt_compat import QtWidgets
 from .core.i18n import tr
 
 class _BaseCmd:
     def IsActive(self):
         return True
-
-class _PlaceholderCmd(_BaseCmd):
-    label = "Placeholder"
-    def GetResources(self):
-        return {"MenuText": self.label, "ToolTip": self.label}
-
-    def Activated(self):
-        placeholder_message(self.label)
-
 
 class CmdNewSketch(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("New Sketch"),"ToolTip":tr("Create a new euSKlid sketch")}
@@ -80,35 +43,9 @@ class CmdOpenSketch(_BaseCmd):
     def Activated(self):
         open_eusklid_sketch()
 
-class CmdNewSketchOnFace(_PlaceholderCmd):
-    label = "On face"
-
-
-
 class CmdLine2Pts(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("2 Anchors"),"ToolTip":tr("Create an infinite line through 2 anchors")}
     def Activated(self): start_line_2pts_session(construction=True)
-
-class CmdParallelU(_BaseCmd):
-    def GetResources(self): return {"MenuText":tr("// X"),"ToolTip":tr("Create lines parallel to X. Positive values go toward +Y.")}
-    def Activated(self):
-        values = ask_distance_series("Distances parallel to X (space separated). Positive values go toward +Y.")
-        if values is None:
-            return
-        create_parallel_axis("X", values, construction=True)
-
-class CmdParallelV(_BaseCmd):
-    def GetResources(self): return {"MenuText":tr("// Y"),"ToolTip":tr("Create lines parallel to Y. Positive values go toward +X.")}
-    def Activated(self):
-        values = ask_distance_series("Distances parallel to Y (space separated). Positive values go toward +X.")
-        if values is None:
-            return
-        create_parallel_axis("Y", values, construction=True)
-
-class CmdParallelRef(_BaseCmd):
-    def GetResources(self): return {"MenuText":tr("// Ref"),"ToolTip":tr("Pick a reference, see positive-side arrow, then enter signed distances.")}
-    def Activated(self): start_parallel_reference_session(ask_distance_series=ask_distance_series, construction=True)
-
 
 class CmdLineParallelRefSeries(_BaseCmd):
     def GetResources(self):
@@ -118,60 +55,31 @@ class CmdLineParallelRefSeries(_BaseCmd):
 
 class CmdLineParallelRefPoint(_BaseCmd):
     def GetResources(self):
-        return {"MenuText":"∥/Ref + Anchor","ToolTip":"Create a line parallel to a selected reference through an anchor"}
+        return {"MenuText": tr("∥/Ref + Anchor"), "ToolTip": tr("Create a line parallel to a selected reference through an anchor")}
     def Activated(self):
         start_line_parallel_ref_point_session(construction=True)
 
 class CmdLinePerpendicularRefPoint(_BaseCmd):
     def GetResources(self):
-        return {"MenuText":"⟂/Ref + Anchor","ToolTip":"Create a line perpendicular to a selected reference through an anchor"}
+        return {"MenuText": tr("⟂/Ref + Anchor"), "ToolTip": tr("Create a line perpendicular to a selected reference through an anchor")}
     def Activated(self):
         start_line_perpendicular_ref_point_session(construction=True)
 
-class CmdLinePointTgCircle(_BaseCmd):
-    def GetResources(self):
-        return {"MenuText":"Point + Tg","ToolTip":"Line through a point tangent to a circle"}
-    def Activated(self):
-        start_line_2pts_session(construction=True)
-
-class CmdLineParallelUTg(_BaseCmd):
-    def GetResources(self):
-        return {"MenuText":"//X + Tg","ToolTip":"Line parallel to X tangent to a circle"}
-    def Activated(self):
-        start_line_parallel_u_tangent_circle_session(construction=True)
-
-class CmdLineParallelVTg(_BaseCmd):
-    def GetResources(self):
-        return {"MenuText":"//Y + Tg","ToolTip":"Line parallel to Y tangent to a circle"}
-    def Activated(self):
-        start_line_parallel_v_tangent_circle_session(construction=True)
-
-class CmdLineParallelRefTg(_BaseCmd):
-    def GetResources(self):
-        return {"MenuText":"∥/Ref + Tg","ToolTip":"Line parallel to a reference and tangent to a circle"}
-    def Activated(self):
-        start_line_parallel_ref_point_session(construction=True)
-
 class CmdPointAngle(_BaseCmd):
     def GetResources(self):
-        return {"MenuText": "Point + Angle", "ToolTip": "Create a line through a point with an angle relative to a reference."}
+        return {
+            "MenuText": tr("Series Ref, Pt, Angle"),
+            "ToolTip": tr("Create a series of lines through a point, at angles measured from a reference."),
+        }
 
     def Activated(self):
-        def _ask_angle():
-            value, ok = QtWidgets.QInputDialog.getDouble(None, "Point + Angle", "Angle (deg):", 45.0, -360.0, 360.0, 2)
-            if not ok:
-                return None
-            return value
-        start_point_angle_session(_ask_angle, construction=True)
+        start_point_angle_session(ask_angle_series=ask_angle_series, construction=True)
 
 
 class CmdLineGrid(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("Grid"),"ToolTip":tr("Create a multi-series grid centered on a picked point")}
     def Activated(self):
-        params = ask_grid_parameters()
-        if params is None:
-            return
-        start_line_grid_session(params, construction=True)
+        start_line_grid_session(ask_grid_parameters=ask_grid_parameters, construction=True)
 
 class CmdCircleCenterRadius(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("Center / Radius"),"ToolTip":tr("Construction circle by center and radius")}
@@ -182,51 +90,21 @@ class CmdCircleCenterRadius(_BaseCmd):
         start_circle_center_radius_session(radius=radius, construction=True)
 
 class CmdCircleCenterPass(_BaseCmd):
-    def GetResources(self): return {"MenuText":tr("Center / Anchor"),"ToolTip":tr("Construction circle by center and anchor (point, line tangency, circle tangency)")}
+    def GetResources(self): return {"MenuText": tr("Center / Anchor"), "ToolTip": tr("Construction circle by center and anchor (point, line tangency, circle tangency)")}
     def Activated(self): start_circle_center_pass_session(construction=True)
 
 class CmdCircle3Pts(_BaseCmd):
-    def GetResources(self): return {"MenuText":tr("3 Anchors"),"ToolTip":tr("Construction circle through 3 anchors")}
+    def GetResources(self): return {"MenuText": tr("3 Anchors"), "ToolTip": tr("Construction circle through 3 anchors")}
     def Activated(self): start_circle_3pts_session(construction=True)
 
 class CmdCircle2PtsRadius(_BaseCmd):
-    def GetResources(self): return {"MenuText":tr("2 Anchors / Radius"),"ToolTip":tr("Construction circle through 2 anchors with given radius")}
+    def GetResources(self): return {"MenuText": tr("2 Anchors / Radius"), "ToolTip": tr("Construction circle through 2 anchors with given radius")}
     def Activated(self):
         radius = ask_radius("Radius")
         if radius is None or radius <= 0:
             return
         start_circle_2pts_radius_session(radius=radius, choose_solution=choose_solution, construction=True)
 
-class CmdCircleCenterTg(_BaseCmd):
-    def GetResources(self): return {"MenuText":tr("Center / tg"),"ToolTip":tr("Center then tangent reference (line or circle). Multiple solutions are chosen graphically.")}
-    def Activated(self): start_circle_center_tangent_session(construction=True)
-
-class CmdCircle2TgRadius(_BaseCmd):
-    def GetResources(self): return {"MenuText":tr("2 Tg / Radius"),"ToolTip":tr("Two tangent references (line/circle) and a radius. Multiple solutions are chosen graphically.")}
-    def Activated(self):
-        radius = ask_radius("Radius")
-        if radius is None or radius <= 0:
-            return
-        start_circle_2tg_radius_session(radius=radius, construction=True)
-
-
-
-class CmdCircle2Pts1Tg(_BaseCmd):
-    def GetResources(self):
-        return {"MenuText":"2 Points / 1 Tg","ToolTip":"Two points then one tangent line reference. Multiple solutions are chosen graphically."}
-    def Activated(self):
-        start_circle_2pts_1tangent_session(construction=True)
-
-
-
-class CmdCircleToPolygon(_BaseCmd):
-    def GetResources(self):
-        return {"MenuText":"To Polygon","ToolTip":"Convert or add a regular polygon from a reference circle"}
-    def Activated(self):
-        params = ask_polygon_parameters()
-        if params is None:
-            return
-        start_circle_to_polygon_session(params=params, construction=True)
 class CmdPathStart(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("Start Path"),"ToolTip":tr("Start a new path")}
     def Activated(self): path_start()
@@ -235,26 +113,9 @@ class CmdPathClose(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("Close Path"),"ToolTip":tr("Close and terminate the current path")}
     def Activated(self): path_close()
 
-class CmdPathEnd(_BaseCmd):
-    def GetResources(self): return {"MenuText":tr("End Path"),"ToolTip":tr("End the current path")}
-    def Activated(self): path_end()
-
 class CmdPathExport(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("Export Path to Sketcher"),"ToolTip":tr("Export the current path to Sketcher")}
     def Activated(self): path_export()
-
-class CmdPathReopenContour(_BaseCmd):
-    def GetResources(self):
-        return {
-            "MenuText": tr("Reopen contour"),
-            "ToolTip": tr("Reopen the last closed euSKlid contour without exporting it"),
-        }
-    def Activated(self):
-        path_reopen_contour()
-
-class CmdExportSketcher(_BaseCmd):
-    def GetResources(self): return {"MenuText":tr("Export Construction to Sketcher"),"ToolTip":tr("Export all entities to native Sketcher")}
-    def Activated(self): export_to_native_sketch(get_or_create_euclid_sketch())
 
 class CmdUndo(_BaseCmd):
     def GetResources(self):
@@ -272,41 +133,25 @@ class CmdSettings(_BaseCmd):
         return {"MenuText": tr("Settings"), "ToolTip": tr("euSKlid settings")}
 
     def Activated(self):
-        from .ui.settings_dialog import SettingsDialog
-        dlg = SettingsDialog()
-        dlg.exec_()
+        from .ui.settings_dialog import show_settings_dialog
+        show_settings_dialog()
 
 def register_commands():
     Gui.addCommand("euSKlid_NewSketch", CmdNewSketch())
     Gui.addCommand("euSKlid_OpenSketch", CmdOpenSketch())
-    Gui.addCommand("euSKlid_NewSketchOnFace", CmdNewSketchOnFace())
     Gui.addCommand("euSKlid_Line2Pts", CmdLine2Pts())
-    Gui.addCommand("euSKlid_ParallelU", CmdParallelU())
-    Gui.addCommand("euSKlid_ParallelV", CmdParallelV())
-    Gui.addCommand("euSKlid_ParallelRef", CmdParallelRef())
     Gui.addCommand("euSKlid_PointAngle", CmdPointAngle())
     Gui.addCommand("euSKlid_LineGrid", CmdLineGrid())
-    Gui.addCommand("euSKlid_LineParallelRefTg", CmdLineParallelRefTg())
-    Gui.addCommand("euSKlid_LineParallelVTg", CmdLineParallelVTg())
-    Gui.addCommand("euSKlid_LineParallelUTg", CmdLineParallelUTg())
     Gui.addCommand("euSKlid_LineParallelRefSeries", CmdLineParallelRefSeries())
     Gui.addCommand("euSKlid_LineParallelRefPoint", CmdLineParallelRefPoint())
     Gui.addCommand("euSKlid_LinePerpendicularRefPoint", CmdLinePerpendicularRefPoint())
-    Gui.addCommand("euSKlid_LinePointTgCircle", CmdLinePointTgCircle())
     Gui.addCommand("euSKlid_CircleCenterRadius", CmdCircleCenterRadius())
     Gui.addCommand("euSKlid_CircleCenterPass", CmdCircleCenterPass())
     Gui.addCommand("euSKlid_Circle3Pts", CmdCircle3Pts())
     Gui.addCommand("euSKlid_Circle2PtsRadius", CmdCircle2PtsRadius())
-    Gui.addCommand("euSKlid_CircleCenterTg", CmdCircleCenterTg())
-    Gui.addCommand("euSKlid_Circle2TgRadius", CmdCircle2TgRadius())
-    Gui.addCommand("euSKlid_Circle2Pts1Tg", CmdCircle2Pts1Tg())
-    Gui.addCommand("euSKlid_CircleToPolygon", CmdCircleToPolygon())
     Gui.addCommand("euSKlid_PathStart", CmdPathStart())
     Gui.addCommand("euSKlid_PathClose", CmdPathClose())
-    Gui.addCommand("euSKlid_PathEnd", CmdPathEnd())
     Gui.addCommand("euSKlid_PathExport", CmdPathExport())
-    Gui.addCommand("euSKlid_PathReopenContour", CmdPathReopenContour())
     Gui.addCommand("euSKlid_Undo", CmdUndo())
-    Gui.addCommand("euSKlid_ExportSketcher", CmdExportSketcher())
     Gui.addCommand("euSKlid_EndSketch", CmdEndSketch())
     Gui.addCommand("euSKlid_Settings", CmdSettings())

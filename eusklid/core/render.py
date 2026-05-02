@@ -27,6 +27,9 @@ def render_snap_point(plane, uv, kind):
 def render_preview_line(plane, a_uv, b_uv):
     indicator.show_preview_line(plane, a_uv, b_uv)
 
+def render_preview_lines(plane, segments_uv):
+    indicator.show_preview_lines(plane, segments_uv)
+
 def render_preview_circle(plane, center_uv, radius):
     indicator.show_preview_circle(plane, center_uv, radius)
 

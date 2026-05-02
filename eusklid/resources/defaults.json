@@ -135,6 +135,7 @@
     "refresh_interval_ms": 120,
     "autogrid": "off",
     "console_messages": false,
-    "help_messages": false
+    "help_messages": false,
+    "function_reentrance": true
   }
 }

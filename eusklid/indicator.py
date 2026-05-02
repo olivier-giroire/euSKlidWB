@@ -47,6 +47,9 @@ _LAYER_FRAME = "frame"
 _SNAP_STATE = None
 _MANUAL_STATE = None
 _SELECTED_STATE = None
+_PREVIEW_STATE = None
+_HIGHLIGHT_STATE = None
+_ARROW_STATE = None
 
 
 # ---------------------------------------------------------------------------
@@ -222,11 +225,6 @@ def _clear_layer(layer):
         pass
 
 
-def _clear_layers(layers):
-    for layer in layers:
-        _clear_layer(layer)
-
-
 def _material(color, alpha=0):
     mat = coin.SoMaterial()
     try:
@@ -390,28 +388,10 @@ def show_snap_point(plane, uv, kind="snap", size=None):
     return _draw_layer_point(_LAYER_POINTS, plane, uv, _point_color(kind), size=size)
 
 
-def show_hover_point(plane, uv, size=None):
-    global _SNAP_STATE
-    _SNAP_STATE = {"kind": "hover", "plane": plane, "uv": uv, "size": size}
-    return _draw_layer_point(_LAYER_POINTS, plane, uv, _point_color("hover"), size=size)
-
-
-def show_marker_point(plane, uv, size=None):
-    global _SNAP_STATE
-    _SNAP_STATE = {"kind": "marker", "plane": plane, "uv": uv, "size": size}
-    return _draw_layer_point(_LAYER_POINTS, plane, uv, _point_color("marker"), size=size)
-
-
 def show_manual_point(plane, uv, size=None):
     global _MANUAL_STATE
     _MANUAL_STATE = {"kind": "manual", "plane": plane, "uv": uv, "size": size}
     return _draw_layer_point(_LAYER_POINTS, plane, uv, _point_color("manual", manual=True), size=size)
-
-
-def show_selected_point(plane, uv, size=None, manual=False):
-    global _SELECTED_STATE
-    _SELECTED_STATE = {"kind": "point", "plane": plane, "uv": uv, "size": size, "manual": manual}
-    return _draw_layer_point(_LAYER_SELECTED, plane, uv, _point_color("selected", manual=manual), size=size)
 
 
 def show_selected_anchors(plane, anchors):
@@ -474,6 +454,9 @@ def _visible_segment_for_line(origin_uv, direction_uv, half_len=1000.0):
 
 
 def show_selected_line(plane, origin_uv, direction_uv, half_len=1000.0, clear=True):
+    global _SELECTED_STATE
+    if clear:
+        _SELECTED_STATE = {"kind": "line", "plane": plane, "origin_uv": origin_uv, "direction_uv": direction_uv, "half_len": half_len}
     root = _ensure_root(_LAYER_SELECTED)
     if root is None:
         return None
@@ -486,6 +469,9 @@ def show_selected_line(plane, origin_uv, direction_uv, half_len=1000.0, clear=Tr
 
 
 def show_selected_circle(plane, center_uv, radius, clear=True):
+    global _SELECTED_STATE
+    if clear:
+        _SELECTED_STATE = {"kind": "circle", "plane": plane, "center_uv": center_uv, "radius": radius}
     root = _ensure_root(_LAYER_SELECTED)
     if root is None:
         return None
@@ -502,16 +488,28 @@ def show_selected_circle(plane, center_uv, radius, clear=True):
 # ---------------------------------------------------------------------------
 
 def show_preview_line(plane, p1_uv, p2_uv):
+    return show_preview_lines(plane, [(p1_uv, p2_uv)])
+
+
+def show_preview_lines(plane, segments_uv):
+    global _PREVIEW_STATE
+    segments = list(segments_uv or [])
+    _PREVIEW_STATE = {"kind": "lines", "plane": plane, "segments_uv": segments}
     root = _ensure_root(_LAYER_PREVIEW)
     if root is None:
         return None
     _clear_layer(_LAYER_PREVIEW)
+    if not segments:
+        return None
     color, width, alpha = _preview_style("line")
-    root.addChild(_line_node([_plane_world(plane, p1_uv), _plane_world(plane, p2_uv)], color, width=width, alpha=alpha))
+    for p1_uv, p2_uv in segments:
+        root.addChild(_line_node([_plane_world(plane, p1_uv), _plane_world(plane, p2_uv)], color, width=width, alpha=alpha))
     return None
 
 
 def show_preview_circle(plane, center_uv, radius):
+    global _PREVIEW_STATE
+    _PREVIEW_STATE = {"kind": "circle", "plane": plane, "center_uv": center_uv, "radius": radius}
     root = _ensure_root(_LAYER_PREVIEW)
     if root is None:
         return None
@@ -522,6 +520,8 @@ def show_preview_circle(plane, center_uv, radius):
 
 
 def show_preview_polygon(plane, vertices_uv):
+    global _PREVIEW_STATE
+    _PREVIEW_STATE = {"kind": "polygon", "plane": plane, "vertices_uv": list(vertices_uv or [])}
     root = _ensure_root(_LAYER_PREVIEW)
     if root is None:
         return None
@@ -538,6 +538,8 @@ def show_preview_polygon(plane, vertices_uv):
 
 
 def show_highlight_line(plane, origin_uv, direction_uv, half_len=1000.0):
+    global _HIGHLIGHT_STATE
+    _HIGHLIGHT_STATE = {"kind": "line", "plane": plane, "origin_uv": origin_uv, "direction_uv": direction_uv, "half_len": half_len}
     root = _ensure_root(_LAYER_HIGHLIGHT)
     if root is None:
         return None
@@ -549,6 +551,8 @@ def show_highlight_line(plane, origin_uv, direction_uv, half_len=1000.0):
 
 
 def show_highlight_circle(plane, center_uv, radius):
+    global _HIGHLIGHT_STATE
+    _HIGHLIGHT_STATE = {"kind": "circle", "plane": plane, "center_uv": center_uv, "radius": radius}
     root = _ensure_root(_LAYER_HIGHLIGHT)
     if root is None:
         return None
@@ -558,58 +562,13 @@ def show_highlight_circle(plane, center_uv, radius):
     return None
 
 
-def show_circle_candidates(plane, candidates):
-    root = _ensure_root(_LAYER_CANDIDATES)
-    if root is None:
-        return None
-    _clear_layer(_LAYER_CANDIDATES)
-    color, width, alpha = _candidate_style()
-    for cand in candidates or []:
-        try:
-            center = cand["center"]
-            radius = cand["radius"]
-        except Exception:
-            continue
-        root.addChild(_line_node(_circle_points(plane, center, radius), color, width=width, alpha=alpha))
-    return None
-
-
 # ---------------------------------------------------------------------------
 # Arrows / frame compatibility
 # ---------------------------------------------------------------------------
 
-def show_uv_frame(plane, origin_uv=(0.0, 0.0), axis_len=140.0, head=35.0, from_refresh=False):
-    # XY-only policy: no custom U/V frame overlay.
-    clear_frame()
-    return None
-
-
-def show_arrow(plane, origin_uv, direction_uv, length=80.0, head=20.0):
-    root = _ensure_root(_LAYER_ARROW)
-    if root is None:
-        return None
-    _clear_layer(_LAYER_ARROW)
-    try:
-        from .math2d import normalize, scale, add, perp
-        d = normalize(direction_uv)
-        if d == (0.0, 0.0):
-            return None
-        n = normalize(perp(d))
-        length_w = _pixels_to_world(plane, origin_uv, _as_float(_dict_get("gui.arrows.length", length), length))
-        head_w = _pixels_to_world(plane, origin_uv, _as_float(_dict_get("gui.arrows.arrow_size", head), head))
-        tail = origin_uv
-        tip = add(tail, scale(d, length_w))
-        left = add(tip, add(scale(d, -head_w), scale(n, head_w * 0.6)))
-        right = add(tip, add(scale(d, -head_w), scale(n, -head_w * 0.6)))
-        color, width, alpha = _arrow_style()
-        for a, b in ((tail, tip), (tip, left), (tip, right)):
-            root.addChild(_line_node([_plane_world(plane, a), _plane_world(plane, b)], color, width=width, alpha=alpha))
-    except Exception:
-        pass
-    return None
-
-
 def show_direction_field(plane, origin_uv, ref_direction_uv, normal_uv, count=10, spacing=30.0, length=30.0, head=5.0):
+    global _ARROW_STATE
+    _ARROW_STATE = {"plane": plane, "origin_uv": origin_uv, "ref_direction_uv": ref_direction_uv, "normal_uv": normal_uv, "count": count, "spacing": spacing, "length": length, "head": head}
     root = _ensure_root(_LAYER_ARROW)
     if root is None:
         return None
@@ -647,7 +606,9 @@ def clear_frame():
 
 
 def clear_arrow():
+    global _ARROW_STATE
     _clear_layer(_LAYER_ARROW)
+    _ARROW_STATE = None
 
 
 def clear_candidates():
@@ -655,23 +616,33 @@ def clear_candidates():
 
 
 def clear_snap():
+    global _SNAP_STATE
     _clear_layer(_LAYER_POINTS)
+    _SNAP_STATE = None
 
 
 def clear_manual():
+    global _MANUAL_STATE
     _clear_layer(_LAYER_POINTS)
+    _MANUAL_STATE = None
 
 
 def clear_selected():
+    global _SELECTED_STATE
     _clear_layer(_LAYER_SELECTED)
+    _SELECTED_STATE = None
 
 
 def clear_preview():
+    global _PREVIEW_STATE
     _clear_layer(_LAYER_PREVIEW)
+    _PREVIEW_STATE = None
 
 
 def clear_highlight():
+    global _HIGHLIGHT_STATE
     _clear_layer(_LAYER_HIGHLIGHT)
+    _HIGHLIGHT_STATE = None
 
 
 def clear_all():
@@ -680,7 +651,7 @@ def clear_all():
 
 
 def reset_overlay_states(clear_frame_too=False):
-    global _SNAP_STATE, _MANUAL_STATE, _SELECTED_STATE
+    global _SNAP_STATE, _MANUAL_STATE, _SELECTED_STATE, _PREVIEW_STATE, _HIGHLIGHT_STATE, _ARROW_STATE
     clear_snap()
     clear_manual()
     clear_selected()
@@ -695,14 +666,14 @@ def reset_overlay_states(clear_frame_too=False):
     _SELECTED_STATE = None
 
 
-def refresh_camera_scaled_overlays():
-    # Coin3D nodes are redrawn on demand by show_* calls. This function remains
-    # for compatibility with existing controller calls.
-    return None
-
-
 def refresh_all_indicators():
-    # Minimal compatibility refresh: redraw only point layers whose state is known.
+    """Redraw visible euSKlid overlays with the current configuration.
+
+    SettingsDialog.Apply updates the in-memory config before calling this
+    function.  Replaying the stored overlay states makes colors, thicknesses,
+    point sizes and transparencies visible immediately without restarting the
+    current tool.
+    """
     try:
         if _SNAP_STATE is not None:
             kind = _SNAP_STATE.get("kind", "snap")
@@ -711,22 +682,71 @@ def refresh_all_indicators():
             size = _SNAP_STATE.get("size")
             if plane is not None and uv is not None:
                 _draw_layer_point(_LAYER_POINTS, plane, uv, _point_color(kind), size=size)
+
         if _MANUAL_STATE is not None:
             plane = _MANUAL_STATE.get("plane")
             uv = _MANUAL_STATE.get("uv")
             size = _MANUAL_STATE.get("size")
             if plane is not None and uv is not None:
                 _draw_layer_point(_LAYER_POINTS, plane, uv, _point_color("manual", manual=True), size=size)
+
         if _SELECTED_STATE is not None:
-            if _SELECTED_STATE.get("kind") == "anchors":
+            kind = _SELECTED_STATE.get("kind")
+            if kind == "anchors":
                 show_selected_anchors(_SELECTED_STATE.get("plane"), _SELECTED_STATE.get("anchors", []))
-            else:
-                plane = _SELECTED_STATE.get("plane")
-                uv = _SELECTED_STATE.get("uv")
-                size = _SELECTED_STATE.get("size")
-                manual = bool(_SELECTED_STATE.get("manual", False))
-                if plane is not None and uv is not None:
-                    _draw_layer_point(_LAYER_SELECTED, plane, uv, _point_color("selected", manual=manual), size=size)
+            elif kind == "line":
+                show_selected_line(
+                    _SELECTED_STATE.get("plane"),
+                    _SELECTED_STATE.get("origin_uv"),
+                    _SELECTED_STATE.get("direction_uv"),
+                    _SELECTED_STATE.get("half_len", 1000.0),
+                    clear=True,
+                )
+            elif kind == "circle":
+                show_selected_circle(
+                    _SELECTED_STATE.get("plane"),
+                    _SELECTED_STATE.get("center_uv"),
+                    _SELECTED_STATE.get("radius"),
+                    clear=True,
+                )
+
+        if _PREVIEW_STATE is not None:
+            kind = _PREVIEW_STATE.get("kind")
+            if kind == "line":
+                show_preview_line(_PREVIEW_STATE.get("plane"), _PREVIEW_STATE.get("p1_uv"), _PREVIEW_STATE.get("p2_uv"))
+            elif kind == "lines":
+                # Series ∥/Ref live preview stores a multi-line state.
+                # Keep it refreshable so Settings.Apply immediately reapplies
+                # the configured preview color/thickness/alpha.
+                show_preview_lines(_PREVIEW_STATE.get("plane"), _PREVIEW_STATE.get("segments_uv", []))
+            elif kind == "circle":
+                show_preview_circle(_PREVIEW_STATE.get("plane"), _PREVIEW_STATE.get("center_uv"), _PREVIEW_STATE.get("radius"))
+            elif kind == "polygon":
+                show_preview_polygon(_PREVIEW_STATE.get("plane"), _PREVIEW_STATE.get("vertices_uv", []))
+
+        if _HIGHLIGHT_STATE is not None:
+            kind = _HIGHLIGHT_STATE.get("kind")
+            if kind == "line":
+                show_highlight_line(
+                    _HIGHLIGHT_STATE.get("plane"),
+                    _HIGHLIGHT_STATE.get("origin_uv"),
+                    _HIGHLIGHT_STATE.get("direction_uv"),
+                    _HIGHLIGHT_STATE.get("half_len", 1000.0),
+                )
+            elif kind == "circle":
+                show_highlight_circle(_HIGHLIGHT_STATE.get("plane"), _HIGHLIGHT_STATE.get("center_uv"), _HIGHLIGHT_STATE.get("radius"))
+
+        if _ARROW_STATE is not None:
+            show_direction_field(
+                _ARROW_STATE.get("plane"),
+                _ARROW_STATE.get("origin_uv"),
+                _ARROW_STATE.get("ref_direction_uv"),
+                _ARROW_STATE.get("normal_uv"),
+                count=_ARROW_STATE.get("count", 10),
+                spacing=_ARROW_STATE.get("spacing", 30.0),
+                length=_ARROW_STATE.get("length", 30.0),
+                head=_ARROW_STATE.get("head", 5.0),
+            )
     except Exception:
         pass
     return None

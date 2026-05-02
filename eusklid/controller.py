@@ -1,18 +1,3 @@
-# SPDX-License-Identifier: LGPL-2.1-or-later
-#
-# euSKlidWB - FreeCAD Workbench
-# Copyright (C) 2026 Olivier Giroire
-#
-# This library is free software; you can redistribute it and/or
-# modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; either
-# version 2.1 of the License, or (at your option) any later version.
-#
-# This library is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-# Lesser General Public License for more details.
-
 
 import FreeCAD as App
 import FreeCADGui as Gui
@@ -30,10 +15,6 @@ from .tools.line_tools import (
     start_parallel_ref_point as tools_start_parallel_ref_point,
     start_point_angle as tools_start_point_angle,
     start_line_two_anchors,
-    start_line_point_tangent_circle as tools_start_line_point_tangent_circle,
-    start_line_parallel_u_tangent_circle as tools_start_line_parallel_u_tangent_circle,
-    start_line_parallel_v_tangent_circle as tools_start_line_parallel_v_tangent_circle,
-    start_line_parallel_ref_tangent_circle as tools_start_line_parallel_ref_tangent_circle,
     start_line_grid as tools_start_line_grid,
 )
 from .tools.circle_tools import (
@@ -41,14 +22,12 @@ from .tools.circle_tools import (
     start_circle_center_pass as tools_start_circle_center_pass,
     start_circle_three_points as tools_start_circle_three_points,
     start_circle_two_anchors_radius as tools_start_circle_two_anchors_radius,
-    start_circle_to_polygon as tools_start_circle_to_polygon,
 )
 from .core.groups import ensure_euclid_groups
 from .tools.path_tools import (
     new_path_session,
     close_path_session,
     export_path_to_sketcher,
-    reopen_closed_path,
     stop_path_session,
     undo_path_session,
     has_active_path_session,
@@ -364,6 +343,7 @@ def undo_contextual():
         undo_last_sketch_edit(sketch_obj)
 
 def path_start():
+    stop_active_session()
     new_path_session()
 
 
@@ -371,17 +351,8 @@ def path_close():
     close_path_session()
 
 
-def path_end():
-    stop_path_session()
-
-
 def path_export():
     export_path_to_sketcher()
-
-
-def path_reopen_contour():
-    reopen_closed_path()
-
 
 def end_sketch():
 
@@ -406,95 +377,61 @@ def end_sketch():
 
 
 def start_line_2pts_session(construction=True):
+    stop_active_session()
     sketch_obj = get_or_create_euclid_sketch()
     return start_line_two_anchors(sketch_obj=sketch_obj, construction=construction)
 
 
-def start_parallel_reference_session(ask_distance_series, construction=True):
-    sketch_obj = get_or_create_euclid_sketch()
-    return tools_start_series_parallel_ref(sketch_obj=sketch_obj, ask_distance_series=ask_distance_series, construction=construction)
-
-
 def start_circle_center_pass_session(construction=True):
+    stop_active_session()
     sketch_obj = get_or_create_euclid_sketch()
     return tools_start_circle_center_pass(sketch_obj=sketch_obj, construction=construction)
 
 
 def start_circle_center_radius_session(radius, construction=True):
+    stop_active_session()
     sketch_obj = get_or_create_euclid_sketch()
     return tools_start_circle_center_radius(sketch_obj=sketch_obj, radius=radius, construction=construction)
 
 
 def start_circle_3pts_session(construction=True):
+    stop_active_session()
     sketch_obj = get_or_create_euclid_sketch()
     return tools_start_circle_three_points(sketch_obj=sketch_obj, construction=construction)
 
 
 def start_circle_2pts_radius_session(radius, choose_solution, construction=True):
+    stop_active_session()
     sketch_obj = get_or_create_euclid_sketch()
     return tools_start_circle_two_anchors_radius(sketch_obj=sketch_obj, radius=radius, construction=construction)
-
-
-def start_circle_center_tangent_session(construction=True):
-    sketch_obj = get_or_create_euclid_sketch()
-    return tools_start_circle_center_pass(sketch_obj=sketch_obj, construction=construction)
-
-
-def start_circle_2tg_radius_session(radius, construction=True):
-    sketch_obj = get_or_create_euclid_sketch()
-    return tools_start_circle_two_anchors_radius(sketch_obj=sketch_obj, radius=radius, construction=construction)
-
-
-def start_circle_2pts_1tangent_session(construction=True):
-    sketch_obj = get_or_create_euclid_sketch()
-    return tools_start_circle_three_points(sketch_obj=sketch_obj, construction=construction)
-
-
-def start_line_point_tangent_circle_session(construction=True):
-    sketch_obj = get_or_create_euclid_sketch()
-    return tools_start_line_point_tangent_circle(sketch_obj=sketch_obj, construction=construction)
-
-
-def start_line_parallel_u_tangent_circle_session(construction=True):
-    sketch_obj = get_or_create_euclid_sketch()
-    return tools_start_line_parallel_u_tangent_circle(sketch_obj=sketch_obj, construction=construction)
-
-
-def start_line_parallel_v_tangent_circle_session(construction=True):
-    sketch_obj = get_or_create_euclid_sketch()
-    return tools_start_line_parallel_v_tangent_circle(sketch_obj=sketch_obj, construction=construction)
-
-
-def start_line_parallel_ref_tangent_circle_session(construction=True):
-    sketch_obj = get_or_create_euclid_sketch()
-    return tools_start_line_parallel_ref_tangent_circle(sketch_obj=sketch_obj, construction=construction)
 
 
 def start_line_parallel_ref_series_session(ask_distance_series, construction=True):
+    stop_active_session()
     sketch_obj = get_or_create_euclid_sketch()
     return tools_start_series_parallel_ref(sketch_obj=sketch_obj, ask_distance_series=ask_distance_series, construction=construction)
 
 
 def start_line_parallel_ref_point_session(construction=True):
+    stop_active_session()
     sketch_obj = get_or_create_euclid_sketch()
     return tools_start_parallel_ref_point(sketch_obj=sketch_obj, construction=construction, perpendicular=False)
 
 
 def start_line_perpendicular_ref_point_session(construction=True):
+    stop_active_session()
     sketch_obj = get_or_create_euclid_sketch()
     return tools_start_parallel_ref_point(sketch_obj=sketch_obj, construction=construction, perpendicular=True)
 
 
-def start_point_angle_session(ask_angle, construction=True):
+def start_point_angle_session(ask_angle_series, construction=True):
+    stop_active_session()
     sketch_obj = get_or_create_euclid_sketch()
-    return tools_start_point_angle(sketch_obj=sketch_obj, ask_angle=ask_angle, construction=construction)
+    return tools_start_point_angle(sketch_obj=sketch_obj, ask_angle_series=ask_angle_series, construction=construction)
 
 
-def start_line_grid_session(grid_params, construction=True):
+def start_line_grid_session(grid_params=None, ask_grid_parameters=None, construction=True):
+    stop_active_session()
     sketch_obj = get_or_create_euclid_sketch()
-    return tools_start_line_grid(sketch_obj=sketch_obj, grid_params=grid_params, construction=construction)
+    return tools_start_line_grid(sketch_obj=sketch_obj, grid_params=grid_params, ask_grid_parameters=ask_grid_parameters, construction=construction)
 
-
-def start_circle_to_polygon_session(params, construction=True):
-    sketch_obj = get_or_create_euclid_sketch()
-    return tools_start_circle_to_polygon(sketch_obj=sketch_obj, params=params, construction=construction)

@@ -46,10 +46,3 @@ def pick_reference_line(scene_sketch_obj, uv, tol=10.0):
 
     return best
 
-def compute_highlights(context, cursor_uv):
-    if context.step.input_kind == "reference_line":
-        ref = pick_reference_line(context.sketch_obj, cursor_uv)
-        if ref is None:
-            return []
-        return [("line", ref["origin"], ref["direction"])]
-    return []

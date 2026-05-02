@@ -13,7 +13,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 # Lesser General Public License for more details.
 
-from PySide import QtGui
+from PySide import QtCore, QtGui
 from ..core.config import load_config, load_default_config, save_config, set_config
 from ..core.i18n import tr
 
@@ -56,11 +56,68 @@ def _set_color_btn(btn, rgb):
     btn.setStyleSheet("QPushButton { background-color: rgb(%d,%d,%d); border: 1px solid #555; border-radius: 9px; padding: 0px; }" % (r, g, b))
 
 
+def _refresh_existing_freecad_views():
+    """Apply the current config to already visible FreeCAD objects/overlays."""
+    try:
+        import FreeCAD as App
+        from ..feature import ensure_proxy
+        from ..core.config import get_config
+
+        cfg = get_config()
+        c = cfg.get("construction", {}).get("lines", {})
+        color = tuple(c.get("color", (1.0, 1.0, 1.0)))
+        width = float(c.get("thickness", 2))
+        alpha = int(c.get("alpha", 0))
+
+        doc = App.ActiveDocument
+        if doc is not None:
+            for obj in getattr(doc, "Objects", []):
+                try:
+                    is_eusklid = False
+                    proxy = getattr(obj, "Proxy", None)
+                    if proxy is not None and proxy.__class__.__name__ == "euSKlidFeature":
+                        is_eusklid = True
+                    elif "SketchJson" in getattr(obj, "PropertiesList", []):
+                        ensure_proxy(obj)
+                        is_eusklid = True
+
+                    if not is_eusklid:
+                        continue
+
+                    vo = getattr(obj, "ViewObject", None)
+                    if vo is None:
+                        continue
+                    vo.LineColor = color
+                    vo.PointColor = color
+                    vo.ShapeColor = color
+                    vo.LineWidth = width
+                    vo.Transparency = alpha
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    try:
+        from .. import indicator
+        indicator.refresh_all_indicators()
+    except Exception:
+        pass
+
+    try:
+        from ..tools import path_tools
+        path_tools.refresh_path_visuals()
+    except Exception:
+        pass
+
+
 class SettingsDialog(QtGui.QDialog):
     def __init__(self, parent=None):
         super(SettingsDialog, self).__init__(parent)
 
         self.setWindowTitle(tr("euSKlid Settings"))
+        self.setWindowModality(QtCore.Qt.NonModal)
+        self.setModal(False)
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.Tool)
         self.resize(620, 650)
 
         layout = QtGui.QVBoxLayout(self)
@@ -183,11 +240,13 @@ class SettingsDialog(QtGui.QDialog):
         self.autogrid = QtGui.QComboBox()
         self.autogrid.addItems(["off", "cm", "mm", "0.1mm"])
         self.refresh_interval = make_spin(50, 2000, 120)
+        self.function_reentrance = QtGui.QCheckBox()
         self.console_messages = QtGui.QCheckBox()
         self.help_messages = QtGui.QCheckBox()
         f.addRow(tr("Snap threshold (px)"), self.snap_thresh)
         f.addRow(tr("Autogrid"), self.autogrid)
         f.addRow(tr("Refresh interval (ms)"), self.refresh_interval)
+        f.addRow(tr("Function reentrance"), self.function_reentrance)
         f.addRow(tr("Console messages"), self.console_messages)
         f.addRow(tr("Help messages"), self.help_messages)
         return w
@@ -197,27 +256,23 @@ class SettingsDialog(QtGui.QDialog):
         save_config(cfg)
         set_config(cfg)
 
+        _refresh_existing_freecad_views()
+
         try:
             import FreeCAD as App
-            import FreeCADGui as Gui
-
             if App.ActiveDocument is not None:
                 App.ActiveDocument.recompute()
+        except Exception:
+            pass
 
+        try:
+            import FreeCADGui as Gui
             Gui.updateGui()
-
             if Gui.ActiveDocument is not None:
                 try:
                     Gui.ActiveDocument.ActiveView.redraw()
                 except Exception:
                     pass
-
-            try:
-                from .. import indicator
-                if hasattr(indicator, "refresh_all_indicators"):
-                    indicator.refresh_all_indicators()
-            except Exception:
-                pass
         except Exception:
             pass
 
@@ -294,6 +349,7 @@ class SettingsDialog(QtGui.QDialog):
                 "snap_threshold": self.snap_thresh.value(),
                 "autogrid": self.autogrid.currentText(),
                 "refresh_interval_ms": self.refresh_interval.value(),
+                "function_reentrance": self.function_reentrance.isChecked(),
                 "console_messages": self.console_messages.isChecked(),
                 "help_messages": self.help_messages.isChecked()
             }
@@ -351,6 +407,7 @@ class SettingsDialog(QtGui.QDialog):
 
             self.snap_thresh.setValue(cfg["feeling"].get("snap_threshold", 20))
             self.refresh_interval.setValue(cfg["feeling"].get("refresh_interval_ms", 120))
+            self.function_reentrance.setChecked(bool(cfg["feeling"].get("function_reentrance", True)))
             self.console_messages.setChecked(bool(cfg["feeling"].get("console_messages", False)))
             self.help_messages.setChecked(bool(cfg["feeling"].get("help_messages", False)))
             idx = self.autogrid.findText(cfg["feeling"].get("autogrid", cfg["feeling"].get("autocorrect", "off")))
@@ -358,3 +415,27 @@ class SettingsDialog(QtGui.QDialog):
                 self.autogrid.setCurrentIndex(idx)
         except Exception:
             pass
+
+_settings_dialog = None
+
+
+def _freecad_main_window():
+    try:
+        import FreeCADGui as Gui
+        return Gui.getMainWindow()
+    except Exception:
+        return None
+
+
+def show_settings_dialog():
+    """Show the settings dialog as a non-modal child of FreeCAD's main window."""
+    global _settings_dialog
+
+    if _settings_dialog is None:
+        _settings_dialog = SettingsDialog(parent=_freecad_main_window())
+        _settings_dialog.setAttribute(QtCore.Qt.WA_DeleteOnClose, False)
+
+    _settings_dialog.show()
+    _settings_dialog.raise_()
+    _settings_dialog.activateWindow()
+    return _settings_dialog

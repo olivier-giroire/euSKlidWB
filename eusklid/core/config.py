@@ -116,6 +116,7 @@ def _hard_fallback():
             "snap_threshold": 20,
             "autogrid": "off",
             "refresh_interval_ms": 120,
+            "function_reentrance": True,
             "console_messages": False,
             "help_messages": False
         }
@@ -193,15 +194,6 @@ def save_config(cfg):
         json.dump(cfg, f, indent=2, ensure_ascii=False)
 
 
-def reset_user_config():
-    path = _user_config_path()
-    if os.path.exists(path):
-        try:
-            os.remove(path)
-        except Exception:
-            pass
-
-
 def get_config():
     global _CURRENT
     if _CURRENT is None:
@@ -213,17 +205,4 @@ def set_config(cfg):
     global _CURRENT
     _CURRENT = copy.deepcopy(cfg)
 
-
-def reload_config():
-    global _CURRENT
-    _CURRENT = load_config()
-    return copy.deepcopy(_CURRENT)
-
-
-def get_default_config_path():
-    return _default_config_path()
-
-
-def get_user_config_path():
-    return _user_config_path()
 

@@ -7,7 +7,7 @@ msgid "euSKlid"
 msgstr "euSKlid"
 
 msgid "euSKlid planar sketching workbench for FreeCAD"
-msgstr "euSKlid Arbeitsbereich für planare Skizzen in FreeCAD"
+msgstr "euSKlid Arbeitsbereich fÃ¼r planare Skizzen in FreeCAD"
 
 msgid "Sketch"
 msgstr "Skizze"
@@ -27,71 +27,254 @@ msgstr "Neue Skizze"
 msgid "Create a new euSKlid sketch"
 msgstr "Eine neue euSKlid-Skizze erstellen"
 
+msgid "Open Sketch"
+msgstr ""
+
+msgid "Open an existing euSKlid sketch from the active document"
+msgstr ""
+
 msgid "2 Anchors"
 msgstr "2 Anker"
 
 msgid "Create an infinite line through 2 anchors"
 msgstr "Eine unendliche Linie durch 2 Anker erstellen"
 
-msgid "// U"
-msgstr "// U"
+msgid "// X"
+msgstr "// X"
 
-msgid "Create lines parallel to U. Positive values go toward +V."
-msgstr "Linien parallel zu U erstellen. Positive Werte gehen in Richtung +V."
+msgid "Create lines parallel to X. Positive values go toward +Y."
+msgstr "Linien parallel zu X erstellen. Positive Werte gehen in Richtung +Y."
 
-msgid "// V"
-msgstr "// V"
+msgid "// Y"
+msgstr "// Y"
 
-msgid "Create lines parallel to V. Positive values go toward +U."
-msgstr "Linien parallel zu V erstellen. Positive Werte gehen in Richtung +U."
+msgid "Create lines parallel to Y. Positive values go toward +X."
+msgstr "Linien parallel zu Y erstellen. Positive Werte gehen in Richtung +X."
 
 msgid "// Ref"
 msgstr "// Ref"
 
 msgid "Pick a reference, see positive-side arrow, then enter signed distances."
-msgstr "Referenz auswählen, positiven Pfeil sehen und dann Vorzeichenabstände eingeben."
+msgstr "Referenz auswÃ¤hlen, positiven Pfeil sehen und dann VorzeichenabstÃ¤nde eingeben."
+
+msgid "∥/Ref + Anchor"
+msgstr ""
+
+msgid "Create a line parallel to a selected reference through an anchor"
+msgstr "Eine Linie parallel zu einer ausgewÃ¤hlten Referenz durch einen Anker erstellen"
+
+msgid "⟂/Ref + Anchor"
+msgstr ""
+
+msgid "Create a line perpendicular to a selected reference through an anchor"
+msgstr "Eine Linie senkrecht zu einer ausgewÃ¤hlten Referenz durch einen Anker erstellen"
+
+msgid "Series Ref, Pt, Angle"
+msgstr "Serie Ref, Pt, Winkel"
+
+msgid "Create a series of lines through a point, at angles measured from a reference."
+msgstr "Eine Reihe von Linien durch einen Punkt erstellen, mit Winkeln bezogen auf eine Referenz."
 
 msgid "Grid"
 msgstr "Gitter"
 
 msgid "Create a multi-series grid centered on a picked point"
-msgstr "Ein Mehrreihen-Gitter um einen ausgewählten Punkt erstellen"
+msgstr "Ein Mehrreihen-Gitter um einen ausgewÃ¤hlten Punkt erstellen"
+
+msgid "Center / Radius"
+msgstr ""
+
+msgid "Construction circle by center and radius"
+msgstr ""
+
+msgid "Center / Anchor"
+msgstr ""
+
+msgid "Construction circle by center and anchor (point, line tangency, circle tangency)"
+msgstr ""
+
+msgid "3 Anchors"
+msgstr ""
+
+msgid "Construction circle through 3 anchors"
+msgstr ""
+
+msgid "2 Anchors / Radius"
+msgstr ""
+
+msgid "Construction circle through 2 anchors with given radius"
+msgstr ""
+
+msgid "Center / tg"
+msgstr ""
+
+msgid "Center then tangent reference (line or circle). Multiple solutions are chosen graphically."
+msgstr ""
+
+msgid "2 Tg / Radius"
+msgstr ""
+
+msgid "Two tangent references (line/circle) and a radius. Multiple solutions are chosen graphically."
+msgstr ""
+
+msgid "2 Points / 1 Tg"
+msgstr "2 Punkte / 1 Tg"
+
+msgid "Two points then one tangent line reference. Multiple solutions are chosen graphically."
+msgstr "Zwei Punkte und dann eine Tangenten-Referenzlinie. Mehrere LÃ¶sungen werden grafisch ausgewÃ¤hlt."
 
 msgid "Start Path"
 msgstr "Kontur starten"
 
+msgid "Start a new path"
+msgstr ""
+
 msgid "Close Path"
-msgstr "Kontur schließen"
+msgstr "Kontur schlieÃen"
+
+msgid "Close and terminate the current path"
+msgstr ""
 
 msgid "End Path"
 msgstr "Kontur beenden"
 
+msgid "End the current path"
+msgstr ""
+
+msgid "Export Path to Sketcher"
+msgstr ""
+
+msgid "Export the current path to Sketcher"
+msgstr ""
+
+msgid "Reopen contour"
+msgstr ""
+
+msgid "Reopen the last closed euSKlid contour without exporting it"
+msgstr ""
+
+msgid "Export Construction to Sketcher"
+msgstr ""
+
+msgid "Export all entities to native Sketcher"
+msgstr ""
+
+msgid "End Sketch"
+msgstr ""
+
+msgid "Stop the active euSKlid tool"
+msgstr ""
+
 msgid "Settings"
 msgstr "Einstellungen"
 
-msgid "Construction"
-msgstr "Konstruktion"
+msgid "euSKlid settings"
+msgstr ""
 
-msgid "Highlight"
-msgstr "Hervorhebung"
+msgid "Angles in degrees, trigonometric direction, separated by spaces or commas:"
+msgstr "Winkel in Grad, gegen den Uhrzeigersinn, getrennt durch Leerzeichen oder Kommas:"
 
-msgid "Preview"
-msgstr "Vorschau"
+msgid "Invalid distance series.\nExamples:\n30,33,40,43\nrepeat 13 (0,1) origin 0 step 2.5"
+msgstr ""
 
-msgid "Current path"
-msgstr "Aktuelle Kontur"
+msgid "Invalid angle series. Examples:\n0 30 45 90\n0, 30, 45, 90"
+msgstr "Ungültige Winkelreihe. Beispiele:\n0 30 45 90\n0, 30, 45, 90"
 
-msgid "Candidate path"
-msgstr "Vorgeschlagene Kontur"
+msgid "NB series"
+msgstr ""
 
-msgid "Closed path"
-msgstr "Geschlossene Kontur"
+msgid "count"
+msgstr ""
+
+msgid "step"
+msgstr ""
+
+msgid "angle"
+msgstr ""
 
 msgid "Color"
 msgstr "Farbe"
 
-msgid "Thickness"
-msgstr "Dicke"
+msgid "euSKlid Settings"
+msgstr ""
+
+msgid "GUI"
+msgstr ""
+
+msgid "Work"
+msgstr ""
+
+msgid "Feeling"
+msgstr ""
+
+msgid "Reset"
+msgstr ""
+
+msgid "Apply"
+msgstr ""
+
+msgid "OK"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Direction Arrows"
+msgstr ""
 
 msgid "Transparency"
 msgstr "Transparenz"
+
+msgid "Thickness"
+msgstr "Dicke"
+
+msgid "Length"
+msgstr ""
+
+msgid "Arrow size"
+msgstr ""
+
+msgid "Step"
+msgstr ""
+
+msgid "Count"
+msgstr ""
+
+msgid "Points"
+msgstr ""
+
+msgid "Size"
+msgstr ""
+
+msgid "Selected"
+msgstr ""
+
+msgid "Snap"
+msgstr ""
+
+msgid "Fixed"
+msgstr ""
+
+msgid "Hover"
+msgstr ""
+
+msgid "Markers"
+msgstr ""
+
+msgid "Construction"
+msgstr "Konstruktion"
+
+msgid "Snap threshold (px)"
+msgstr ""
+
+msgid "Autogrid"
+msgstr ""
+
+msgid "Refresh interval (ms)"
+msgstr ""
+
+msgid "Console messages"
+msgstr ""
+
+msgid "Help messages"
+msgstr ""

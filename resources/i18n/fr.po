@@ -22,7 +22,7 @@ msgid "Path"
 msgstr "Contour"
 
 msgid "New Sketch"
-msgstr "Nouveau sketch"
+msgstr "Nouveau Sketch"
 
 msgid "Create a new euSKlid sketch"
 msgstr "Créer un nouveau sketch euSKlid"
@@ -33,11 +33,95 @@ msgstr "Ouvrir sketch"
 msgid "Open an existing euSKlid sketch from the active document"
 msgstr "Ouvrir un sketch euSKlid existant du document actif"
 
-msgid "No active document."
-msgstr "Aucun document actif."
+msgid "2 Anchors"
+msgstr "2 Attaches"
 
-msgid "No euSKlid sketch found in the active document."
-msgstr "Aucun sketch euSKlid trouvé dans le document actif."
+msgid "Create an infinite line through 2 anchors"
+msgstr "Créer une droite par deux attaches"
+
+msgid "// X"
+msgstr "// X"
+
+msgid "Create lines parallel to X. Positive values go toward +Y."
+msgstr "Créer des droites parallèles à X. Les valeurs positives vont vers +Y."
+
+msgid "// Y"
+msgstr "// Y"
+
+msgid "Create lines parallel to Y. Positive values go toward +X."
+msgstr "Créer des droites parallèles à Y. Les valeurs positives vont vers +X."
+
+msgid "// Ref"
+msgstr "// Référence"
+
+msgid "Pick a reference, see positive-side arrow, then enter signed distances."
+msgstr "Choisir une référence, voir l'indication de sens positif, puis saisir les valeurs"
+
+msgid "∥/Ref + Anchor"
+msgstr "∥/Réf + Attache"
+
+msgid "Create a line parallel to a selected reference through an anchor"
+msgstr "Créer une droite parallèle à une référence sélectionnée passant par une attache"
+
+msgid "⟂/Ref + Anchor"
+msgstr "⟂/Réf + Attache"
+
+msgid "Create a line perpendicular to a selected reference through an anchor"
+msgstr "Créer une droite perpendiculaire à une référence sélectionnée passant par une attache"
+
+msgid "Series Ref, Pt, Angle"
+msgstr "Série Réf, Pt, Angle"
+
+msgid "Create a series of lines through a point, at angles measured from a reference."
+msgstr "Créer une série de droites passant par un point, avec des angles mesurés depuis une référence."
+
+msgid "Grid"
+msgstr "Grille"
+
+msgid "Create a multi-series grid centered on a picked point"
+msgstr "Crée une grille multi-directionnelle centrée sur un point"
+
+msgid "Center / Radius"
+msgstr "Centre + Rayon"
+
+msgid "Construction circle by center and radius"
+msgstr "Cercle par son centre et son rayon"
+
+msgid "Center / Anchor"
+msgstr "Centre + Attache"
+
+msgid "Construction circle by center and anchor (point, line tangency, circle tangency)"
+msgstr "Cercle par son centre et une attache"
+
+msgid "3 Anchors"
+msgstr "3 Attaches"
+
+msgid "Construction circle through 3 anchors"
+msgstr "Cercle par 3 attaches"
+
+msgid "2 Anchors / Radius"
+msgstr "2 Attaches + Rayon"
+
+msgid "Construction circle through 2 anchors with given radius"
+msgstr "Cercle par deux attaches et rayon"
+
+msgid "Center / tg"
+msgstr "Centre + Tangente"
+
+msgid "Center then tangent reference (line or circle). Multiple solutions are chosen graphically."
+msgstr "Cercle par centre puis tangente (droite ou autre cercle). Sélection d'une solutions prévisualisée."
+
+msgid "2 Tg / Radius"
+msgstr "2 Tangentes + Rayon"
+
+msgid "Two tangent references (line/circle) and a radius. Multiple solutions are chosen graphically."
+msgstr "cercle par 2 tangentes (droites ou cercles) et rayon. Sélection d'une solutions prévisualisée."
+
+msgid "2 Points / 1 Tg"
+msgstr "2 Points + 1 Tangente"
+
+msgid "Two points then one tangent line reference. Multiple solutions are chosen graphically."
+msgstr "Deux points puis une droite tangente de référence. Sélection d'une solutions prévisualisée."
 
 msgid "Start Path"
 msgstr "Démarrer contour"
@@ -46,19 +130,16 @@ msgid "Start a new path"
 msgstr "Démarrer un nouveau contour"
 
 msgid "Close Path"
-msgstr "Fermer contour"
+msgstr "Fermer le contour"
 
 msgid "Close and terminate the current path"
 msgstr "Fermer et terminer le contour courant"
 
 msgid "End Path"
-msgstr "Terminer contour"
+msgstr "Terminer le contour"
 
 msgid "End the current path"
 msgstr "Terminer le contour courant"
-
-msgid "Reopen contour in active sketch"
-msgstr "Réouvrir le contour dans le sketch actif"
 
 msgid "Export Path to Sketcher"
 msgstr "Exporter le contour vers Sketcher"
@@ -72,10 +153,43 @@ msgstr "Exporter la construction vers Sketcher"
 msgid "Export all entities to native Sketcher"
 msgstr "Exporter toutes les entités vers Sketcher natif"
 
+msgid "End Sketch"
+msgstr "Terminer Sketch"
+
+msgid "Stop the active euSKlid tool"
+msgstr "Arrèter l'outil euSKlid actif"
+
 msgid "Settings"
 msgstr "Paramètres"
 
 msgid "euSKlid settings"
+msgstr "Paramètres euSKlid"
+
+msgid "Angles in degrees, trigonometric direction, separated by spaces or commas:"
+msgstr "Angles en degrés, sens trigonométrique, séparés par des espaces ou des virgules :"
+
+msgid "Invalid distance series.\nExamples:\n30,33,40,43\nrepeat 13 (0,1) origin 0 step 2.5"
+msgstr "Liste de distances invalide, exemples :\n30,33,40,43\nrepeat 13 (0,1) origin 0 step 2.5\nrepeat 13 (0,1) origin 0 step 2.5, 50, 55, 60\nabreviations : repeat=rep=r, origin=org=o, step=stp=s"
+
+msgid "Invalid angle series. Examples:\n0 30 45 90\n0, 30, 45, 90"
+msgstr "Série d'angles invalide. Exemples :\n0 30 45 90\n0, 30, 45, 90"
+
+msgid "NB series"
+msgstr "Nombre de directions"
+
+msgid "count"
+msgstr "Nombre de droites"
+
+msgid "step"
+msgstr "Pas"
+
+msgid "angle"
+msgstr "Angle"
+
+msgid "Color"
+msgstr "Couleur"
+
+msgid "euSKlid Settings"
 msgstr "Paramètres euSKlid"
 
 msgid "GUI"
@@ -84,26 +198,41 @@ msgstr "Interface"
 msgid "Work"
 msgstr "Travail"
 
-msgid "Construction"
-msgstr "Construction"
+msgid "Feeling"
+msgstr "Ergonomie"
 
-msgid "Highlight"
-msgstr "Surbrillance"
+msgid "Reset"
+msgstr "Réinitialiser"
 
-msgid "Preview"
-msgstr "Prévisualisation"
+msgid "Apply"
+msgstr "Appliquer"
 
-msgid "Path"
-msgstr "Contour"
+msgid "OK"
+msgstr "OK"
 
-msgid "Current path"
-msgstr "Contour courant"
+msgid "Cancel"
+msgstr "Annuler"
 
-msgid "Candidate path"
-msgstr "Contour candidat"
+msgid "Direction Arrows"
+msgstr "Flèches de direction"
 
-msgid "Closed path"
-msgstr "Contour fermé"
+msgid "Transparency"
+msgstr "Transparence"
+
+msgid "Thickness"
+msgstr "Épaisseur"
+
+msgid "Length"
+msgstr "Longueur"
+
+msgid "Arrow size"
+msgstr "Taille de flèche"
+
+msgid "Step"
+msgstr "Pas"
+
+msgid "Count"
+msgstr "Nombre"
 
 msgid "Points"
 msgstr "Points"
@@ -117,29 +246,29 @@ msgstr "Sélectionné"
 msgid "Snap"
 msgstr "Accroche"
 
+msgid "Fixed"
+msgstr "Fixe"
+
 msgid "Hover"
 msgstr "Survol"
 
 msgid "Markers"
 msgstr "Marqueurs"
 
-msgid "Color"
-msgstr "Couleur"
+msgid "Construction"
+msgstr "Construction"
 
-msgid "Thickness"
-msgstr "Épaisseur"
+msgid "Snap threshold (px)"
+msgstr "Seuil d'accrochage (px)"
 
-msgid "Transparency"
-msgstr "Transparence"
+msgid "Autogrid"
+msgstr "Autogrille"
 
-msgid "Reset"
-msgstr "Réinitialiser"
+msgid "Refresh interval (ms)"
+msgstr "Intervale de raffraichissement (ms)"
 
-msgid "Apply"
-msgstr "Appliquer"
+msgid "Console messages"
+msgstr "Messages dans la console"
 
-msgid "OK"
-msgstr "OK"
-
-msgid "Cancel"
-msgstr "Annuler"
+msgid "Help messages"
+msgstr "Messages d'aide"

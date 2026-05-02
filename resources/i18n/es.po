@@ -13,10 +13,10 @@ msgid "Sketch"
 msgstr "Boceto"
 
 msgid "Lines"
-msgstr "Líneas"
+msgstr "LÃ­neas"
 
 msgid "Circles"
-msgstr "Círculos"
+msgstr "CÃ­rculos"
 
 msgid "Path"
 msgstr "Contorno"
@@ -27,23 +27,29 @@ msgstr "Nuevo boceto"
 msgid "Create a new euSKlid sketch"
 msgstr "Crear un nuevo boceto euSKlid"
 
+msgid "Open Sketch"
+msgstr ""
+
+msgid "Open an existing euSKlid sketch from the active document"
+msgstr ""
+
 msgid "2 Anchors"
 msgstr "2 anclas"
 
 msgid "Create an infinite line through 2 anchors"
-msgstr "Crear una línea infinita a través de 2 anclas"
+msgstr "Crear una lÃ­nea infinita a travÃ©s de 2 anclas"
 
-msgid "// U"
-msgstr "// U"
+msgid "// X"
+msgstr "// X"
 
-msgid "Create lines parallel to U. Positive values go toward +V."
-msgstr "Crear líneas paralelas a U. Los valores positivos van hacia +V."
+msgid "Create lines parallel to X. Positive values go toward +Y."
+msgstr "Crear lÃ­neas paralelas a X. Los valores positivos van hacia +Y."
 
-msgid "// V"
-msgstr "// V"
+msgid "// Y"
+msgstr "// Y"
 
-msgid "Create lines parallel to V. Positive values go toward +U."
-msgstr "Crear líneas paralelas a V. Los valores positivos van hacia +U."
+msgid "Create lines parallel to Y. Positive values go toward +X."
+msgstr "Crear lÃ­neas paralelas a Y. Los valores positivos van hacia +X."
 
 msgid "// Ref"
 msgstr "// Ref"
@@ -51,35 +57,71 @@ msgstr "// Ref"
 msgid "Pick a reference, see positive-side arrow, then enter signed distances."
 msgstr "Seleccionar una referencia, ver la flecha del lado positivo y luego introducir distancias con signo."
 
+msgid "∥/Ref + Anchor"
+msgstr ""
+
+msgid "Create a line parallel to a selected reference through an anchor"
+msgstr "Crear una lÃ­nea paralela a una referencia seleccionada pasando por un ancla"
+
+msgid "⟂/Ref + Anchor"
+msgstr ""
+
+msgid "Create a line perpendicular to a selected reference through an anchor"
+msgstr "Crear una lÃ­nea perpendicular a una referencia seleccionada pasando por un ancla"
+
+msgid "Series Ref, Pt, Angle"
+msgstr "Serie Ref, Pt, Ãngulo"
+
+msgid "Create a series of lines through a point, at angles measured from a reference."
+msgstr "Crear una serie de lÃ­neas que pasan por un punto, con Ã¡ngulos medidos desde una referencia."
+
 msgid "Grid"
-msgstr "Cuadrícula"
+msgstr "CuadrÃ­cula"
 
 msgid "Create a multi-series grid centered on a picked point"
-msgstr "Crear una cuadrícula multi-serie centrada en un punto seleccionado"
+msgstr "Crear una cuadrÃ­cula multi-serie centrada en un punto seleccionado"
 
 msgid "Center / Radius"
 msgstr "Centro / Radio"
 
 msgid "Construction circle by center and radius"
-msgstr "Círculo de construcción por centro y radio"
+msgstr "CÃ­rculo de construcciÃ³n por centro y radio"
 
 msgid "Center / Anchor"
 msgstr "Centro / Ancla"
 
 msgid "Construction circle by center and anchor (point, line tangency, circle tangency)"
-msgstr "Círculo de construcción por centro y ancla (punto, tangencia línea, tangencia círculo)"
+msgstr "CÃ­rculo de construcciÃ³n por centro y ancla (punto, tangencia lÃ­nea, tangencia cÃ­rculo)"
 
 msgid "3 Anchors"
 msgstr "3 anclas"
 
 msgid "Construction circle through 3 anchors"
-msgstr "Círculo de construcción a través de 3 anclas"
+msgstr "CÃ­rculo de construcciÃ³n a travÃ©s de 3 anclas"
 
 msgid "2 Anchors / Radius"
 msgstr "2 anclas / Radio"
 
 msgid "Construction circle through 2 anchors with given radius"
-msgstr "Círculo de construcción a través de 2 anclas con radio dado"
+msgstr "CÃ­rculo de construcciÃ³n a travÃ©s de 2 anclas con radio dado"
+
+msgid "Center / tg"
+msgstr ""
+
+msgid "Center then tangent reference (line or circle). Multiple solutions are chosen graphically."
+msgstr ""
+
+msgid "2 Tg / Radius"
+msgstr ""
+
+msgid "Two tangent references (line/circle) and a radius. Multiple solutions are chosen graphically."
+msgstr ""
+
+msgid "2 Points / 1 Tg"
+msgstr "2 puntos / 1 tg"
+
+msgid "Two points then one tangent line reference. Multiple solutions are chosen graphically."
+msgstr "Dos puntos y luego una lÃ­nea tangente de referencia. Las soluciones mÃºltiples se eligen grÃ¡ficamente."
 
 msgid "Start Path"
 msgstr "Iniciar contorno"
@@ -105,8 +147,56 @@ msgstr "Exportar contorno a Sketcher"
 msgid "Export the current path to Sketcher"
 msgstr "Exportar el contorno actual a Sketcher"
 
+msgid "Reopen contour"
+msgstr ""
+
+msgid "Reopen the last closed euSKlid contour without exporting it"
+msgstr ""
+
+msgid "Export Construction to Sketcher"
+msgstr ""
+
+msgid "Export all entities to native Sketcher"
+msgstr ""
+
+msgid "End Sketch"
+msgstr ""
+
+msgid "Stop the active euSKlid tool"
+msgstr ""
+
 msgid "Settings"
-msgstr "Configuración"
+msgstr "ConfiguraciÃ³n"
+
+msgid "euSKlid settings"
+msgstr ""
+
+msgid "Angles in degrees, trigonometric direction, separated by spaces or commas:"
+msgstr "Ángulos en grados, sentido trigonométrico, separados por espacios o comas:"
+
+msgid "Invalid distance series.\nExamples:\n30,33,40,43\nrepeat 13 (0,1) origin 0 step 2.5"
+msgstr ""
+
+msgid "Invalid angle series. Examples:\n0 30 45 90\n0, 30, 45, 90"
+msgstr "Serie de ángulos no válida. Ejemplos:\n0 30 45 90\n0, 30, 45, 90"
+
+msgid "NB series"
+msgstr ""
+
+msgid "count"
+msgstr ""
+
+msgid "step"
+msgstr ""
+
+msgid "angle"
+msgstr ""
+
+msgid "Color"
+msgstr "Color"
+
+msgid "euSKlid Settings"
+msgstr ""
 
 msgid "GUI"
 msgstr "Interfaz"
@@ -114,17 +204,56 @@ msgstr "Interfaz"
 msgid "Work"
 msgstr "Trabajo"
 
+msgid "Feeling"
+msgstr ""
+
+msgid "Reset"
+msgstr ""
+
+msgid "Apply"
+msgstr ""
+
+msgid "OK"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Direction Arrows"
+msgstr ""
+
+msgid "Transparency"
+msgstr "Transparencia"
+
+msgid "Thickness"
+msgstr "Grosor"
+
+msgid "Length"
+msgstr ""
+
+msgid "Arrow size"
+msgstr ""
+
+msgid "Step"
+msgstr ""
+
+msgid "Count"
+msgstr ""
+
 msgid "Points"
 msgstr "Puntos"
 
 msgid "Size"
-msgstr "Tamaño"
+msgstr "TamaÃ±o"
 
 msgid "Selected"
 msgstr "Seleccionado"
 
 msgid "Snap"
 msgstr "Ajuste"
+
+msgid "Fixed"
+msgstr ""
 
 msgid "Hover"
 msgstr "Sobrevuelo"
@@ -133,28 +262,19 @@ msgid "Markers"
 msgstr "Marcadores"
 
 msgid "Construction"
-msgstr "Construcción"
+msgstr "ConstrucciÃ³n"
 
-msgid "Highlight"
-msgstr "Resaltado"
+msgid "Snap threshold (px)"
+msgstr ""
 
-msgid "Preview"
-msgstr "Vista previa"
+msgid "Autogrid"
+msgstr ""
 
-msgid "Current path"
-msgstr "Contorno actual"
+msgid "Refresh interval (ms)"
+msgstr ""
 
-msgid "Candidate path"
-msgstr "Contorno candidato"
+msgid "Console messages"
+msgstr ""
 
-msgid "Closed path"
-msgstr "Contorno cerrado"
-
-msgid "Color"
-msgstr "Color"
-
-msgid "Thickness"
-msgstr "Grosor"
-
-msgid "Transparency"
-msgstr "Transparencia"
+msgid "Help messages"
+msgstr ""

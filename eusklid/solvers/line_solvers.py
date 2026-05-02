@@ -1,59 +1,26 @@
-# SPDX-License-Identifier: LGPL-2.1-or-later
-#
-# euSKlidWB - FreeCAD Workbench
-# Copyright (C) 2026 Olivier Giroire
-#
-# This library is free software; you can redistribute it and/or
-# modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; either
-# version 2.1 of the License, or (at your option) any later version.
-#
-# This library is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-# Lesser General Public License for more details.
-
 
 import math
 from ..math2d import normalize, dist2, project_point_on_line, perp
 
-def build_parallel_ref_series(ref, values):
-    direction = normalize(ref["direction"])
-    if ref.get("kind") == "axis" and ref.get("axis") == "U":
-        normal = (0.0, 1.0)
-    elif ref.get("kind") == "axis" and ref.get("axis") == "V":
-        normal = (1.0, 0.0)
-    else:
-        normal = normalize(perp(direction))
-
+def build_point_angle_series(ref, point, angles_deg):
+    base = normalize(ref["direction"])
     out = []
-    for d in values:
-        origin = (
-            ref["origin"][0] + normal[0] * d,
-            ref["origin"][1] + normal[1] * d,
-        )
-        out.append({"origin": origin, "direction": direction})
+    for angle_deg in angles_deg or []:
+        angle = math.radians(float(angle_deg))
+        ca = math.cos(angle)
+        sa = math.sin(angle)
+        direction = normalize((
+            base[0] * ca - base[1] * sa,
+            base[0] * sa + base[1] * ca,
+        ))
+        out.append({
+            "origin": point,
+            "direction": direction,
+            "mode": "point-angle-series",
+            "angle": float(angle_deg),
+        })
     return out
 
-def build_parallel_ref_point(ref, point):
-    return {"origin": point, "direction": normalize(ref["direction"])}
-
-def build_perpendicular_ref_point(ref, point):
-    return {"origin": point, "direction": normalize(perp(ref["direction"]))}
-
-
-def build_point_angle_lines(ref, point, angle_deg):
-    import math
-    base = normalize(ref["direction"])
-    angle = math.radians(float(angle_deg))
-    ca = math.cos(angle)
-    sa = math.sin(angle)
-    d1 = normalize((base[0]*ca - base[1]*sa, base[0]*sa + base[1]*ca))
-    d2 = normalize((base[0]*ca + base[1]*sa, -base[0]*sa + base[1]*ca))
-    return [
-        {"origin": point, "direction": d1, "mode": "point-angle"},
-        {"origin": point, "direction": d2, "mode": "point-angle"},
-    ]
 
 def build_line_from_two_points(p1, p2):
     dx = p2[0] - p1[0]

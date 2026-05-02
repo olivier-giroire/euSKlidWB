@@ -497,12 +497,6 @@ def clear_path_markers():
     _PATH_MARKER_OBJECTS = _remove_objects(_PATH_MARKER_OBJECTS)
 
 
-def clear_all_path_visuals():
-    clear_path_active()
-    clear_path_preview()
-    clear_path_markers()
-
-
 def _make_sphere(plane, uv, radius=2.4, color=(1.0, 0.5, 0.0), transparency=5, name="euSKlidPathPoint"):
     doc = App.ActiveDocument
     if doc is None:
@@ -608,42 +602,8 @@ def _wrap_angle(a):
     return a
 
 
-def _minor_arc_delta(a0, a1):
-    da = _wrap_angle(a1) - _wrap_angle(a0)
-    while da <= -math.pi:
-        da += 2.0 * math.pi
-    while da > math.pi:
-        da -= 2.0 * math.pi
-    return da
-
-
-def _segment_dir(a, b):
-    return _normalize((b[0] - a[0], b[1] - a[1]))
-
-
 def _cross(u, v):
     return u[0] * v[1] - u[1] * v[0]
-
-
-def _segments_collinear(a1, a2, b1, b2, tol=1e-7):
-    ua = (a2[0] - a1[0], a2[1] - a1[1])
-    ub = (b2[0] - b1[0], b2[1] - b1[1])
-    if math.hypot(*ua) < tol or math.hypot(*ub) < tol:
-        return False
-    if abs(_cross(ua, ub)) > tol:
-        return False
-    if abs(_cross(ua, (b1[0] - a1[0], b1[1] - a1[1]))) > tol:
-        return False
-    return True
-
-
-def _is_angle_between_ccw(a, a0, a1):
-    a = _wrap_angle(a)
-    a0 = _wrap_angle(a0)
-    a1 = _wrap_angle(a1)
-    if a0 <= a1:
-        return a0 <= a <= a1
-    return a >= a0 or a <= a1
 
 
 def _line_line_intersection(o1, d1, o2, d2):
@@ -1845,7 +1805,7 @@ class PathSession:
 
         # V1.1.2 sequence spacing constraints on real exported segments.
         #
-        # No auxiliary/construction segment is created here. The contour
+        # No auxiliary/construction segment is created here. The path
         # segments cut by the sequenced parallel lines are used directly.
         # Existing tangency and collinearity constraints above are preserved.
         # For each repeated spacing family: first real segment = master
@@ -2302,6 +2262,37 @@ def stop_path_session(clear_closed=False):
             pass
 
 
+
+def refresh_path_visuals():
+    """Refresh visible Path overlays and closed path styling after config changes."""
+    try:
+        if _ACTIVE_PATH_SESSION is not None:
+            _ACTIVE_PATH_SESSION.render_all()
+    except Exception:
+        pass
+
+    try:
+        closed_color, closed_width, closed_alpha = _path_style("closed", (0.0, 0.45, 0.0), 6.0, 0)
+        for obj in list(_PATH_CLOSED_OBJECTS):
+            try:
+                vo = getattr(obj, "ViewObject", None)
+                if vo is None:
+                    continue
+                vo.LineColor = closed_color
+                vo.ShapeColor = closed_color
+                vo.PointColor = closed_color
+                vo.LineWidth = closed_width
+                vo.Transparency = closed_alpha
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    try:
+        _path_request_redraw()
+    except Exception:
+        pass
+
 def has_active_path_session():
     return _ACTIVE_PATH_SESSION is not None
 
@@ -2310,54 +2301,3 @@ def undo_path_session():
     if _ACTIVE_PATH_SESSION is None:
         return False
     return _ACTIVE_PATH_SESSION.undo_last_point()
-
-# Compatibility restore: controller.py imports reopen_closed_path.
-# This function reopens the last in-memory closed contour without exporting it.
-def reopen_closed_path():
-    global _CLOSED_PATHS, _PATH_CLOSED_OBJECTS, _ACTIVE_PATH_SESSION
-    if not _CLOSED_PATHS:
-        App.Console.PrintError("euSKlid Path: no closed contour available to reopen\n")
-        return None
-    record = _CLOSED_PATHS[-1]
-    if _ACTIVE_PATH_SESSION is not None:
-        try:
-            _ACTIVE_PATH_SESSION.finish()
-        except Exception:
-            pass
-        _ACTIVE_PATH_SESSION = None
-    try:
-        _PATH_CLOSED_OBJECTS = _remove_objects(_PATH_CLOSED_OBJECTS)
-    except Exception:
-        _PATH_CLOSED_OBJECTS = []
-    plane = record.get("plane")
-    pieces = record.get("pieces", []) or []
-    if plane is None or not pieces:
-        App.Console.PrintError("euSKlid Path: stored contour is empty or invalid\n")
-        return None
-    objs = []
-    closed_color, closed_width, closed_alpha = _path_style("closed", (0.0, 0.45, 0.0), 6.0, 0)
-    for piece in pieces:
-        try:
-            if piece.get("type") == "segment":
-                obj = _make_line_segment(plane, piece["a"], piece["b"], color=closed_color, width=closed_width, transparency=closed_alpha, name="euSKlidClosedPathSeg")
-            else:
-                a0 = piece["a0"]
-                a1 = piece["a1"]
-                if piece.get("delta", 1.0) < 0.0:
-                    a0, a1 = a1, a0
-                obj = _make_arc_segment(plane, piece["center"], piece["radius"], a0, a1, color=closed_color, width=closed_width, transparency=closed_alpha, name="euSKlidClosedPathArc")
-            if obj is not None:
-                objs.append(obj)
-        except Exception as exc:
-            try:
-                elog.info("Reopen contour piece skipped: %s" % exc)
-            except Exception:
-                pass
-    _PATH_CLOSED_OBJECTS = objs
-    try:
-        if App.ActiveDocument is not None:
-            App.ActiveDocument.recompute()
-    except Exception:
-        pass
-    App.Console.PrintMessage("euSKlid Path: reopened closed contour (%d piece(s)); use Export Path to Sketcher to export it\n" % len(pieces))
-    return record
