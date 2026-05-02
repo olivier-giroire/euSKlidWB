@@ -1,5 +1,16 @@
 # Releases
 
+## v1.2.0
+
+- Dialogs non modaux + live preview
+- Suppression des valeurs exemples
+- Couleurs preview synchronisées config
+- Réentrance configurable (Feeling)
+- ESC = sortie outil
+- Changement d’outil = arrêt automatique précédent
+- Code mort supprimé
+- Commandes inutiles supprimées
+
 ## v1.1.9
 
 Major stabilization release.
