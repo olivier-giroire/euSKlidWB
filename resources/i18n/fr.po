@@ -272,3 +272,27 @@ msgstr "Messages dans la console"
 
 msgid "Help messages"
 msgstr "Messages d'aide"
+
+msgid "Central symmetry export"
+msgstr "Exporter la symétrie centrale"
+
+msgid "Detect point symmetry about the sketch origin during Path export"
+msgstr "Détecter la symétrie centrale autour de l’origine du sketch lors de l’export du contour"
+
+msgid "Export"
+msgstr "Export"
+
+msgid "Symmetry constraints"
+msgstr "Contraintes de symétrie"
+
+msgid "Axial symmetry Y export"
+msgstr "Exporter la symétrie axiale Y"
+
+msgid "Axial symmetry X export"
+msgstr "Exporter la symétrie axiale X"
+
+msgid "Detect point symmetry about the sketch Y axis during Path export"
+msgstr "Détecter la symétrie axiale autour de l’axe Y du sketch lors de l’export du contour"
+
+msgid "Detect point symmetry about the sketch X axis during Path export"
+msgstr "Détecter la symétrie axiale autour de l’axe X du sketch lors de l’export du contour"

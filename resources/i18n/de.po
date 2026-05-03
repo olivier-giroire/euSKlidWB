@@ -278,3 +278,27 @@ msgstr ""
 
 msgid "Help messages"
 msgstr ""
+
+msgid "Central symmetry export"
+msgstr "Zentrale Symmetrie exportieren"
+
+msgid "Detect point symmetry about the sketch origin during Path export"
+msgstr "Punktsymmetrie um den Sketch-Ursprung beim Pfadexport erkennen"
+
+msgid "Export"
+msgstr "Export"
+
+msgid "Symmetry constraints"
+msgstr ""
+
+msgid "Axial symmetry Y export"
+msgstr ""
+
+msgid "Axial symmetry X export"
+msgstr ""
+
+msgid "Detect point symmetry about the sketch Y axis during Path export"
+msgstr ""
+
+msgid "Detect point symmetry about the sketch X axis during Path export"
+msgstr ""

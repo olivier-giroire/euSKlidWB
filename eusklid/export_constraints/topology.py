@@ -230,3 +230,96 @@ def mirrored_endpoint_pairs_x_axis(geom_meta, tol):
     for pair in pairs:
         yield pair
 
+def _central_symmetry_nodes(geom_meta, tol):
+    """Return representative point-like nodes for central symmetry.
+
+    Nodes include topological endpoint clusters and circular support centers.
+    Each node is a tuple ``(kind, cx, cy, representative)``.  The
+    representative is ``(order, meta, point_id, position)`` and follows
+    Sketcher point ids: endpoints use 1/2, arc/circle centers use 3.
+
+    Centers are clustered by position so several arc fragments from the same
+    construction circle contribute only one symmetry candidate.
+    """
+    nodes = []
+
+    for cluster in endpoint_clusters(geom_meta, tol):
+        cx, cy = _cluster_center(cluster)
+        rep = min(cluster, key=lambda item: int(item[0]))
+        nodes.append(("endpoint", cx, cy, rep))
+
+    center_clusters = []
+    for order, meta in enumerate(geom_meta):
+        center = meta.get("center")
+        if center is None:
+            continue
+        # Arc/circle center point id in FreeCAD Sketcher.
+        item = (order, meta, 3, center)
+        found = None
+        for cluster in center_clusters:
+            if dist(center, cluster[0][3]) <= tol:
+                found = cluster
+                break
+        if found is None:
+            center_clusters.append([item])
+        else:
+            found.append(item)
+
+    for cluster in center_clusters:
+        cx, cy = _cluster_center(cluster)
+        rep = min(cluster, key=lambda item: int(item[0]))
+        nodes.append(("center", cx, cy, rep))
+
+    return nodes
+
+
+def mirrored_endpoint_pairs_center_origin(geom_meta, tol):
+    """Yield representative point pairs centrally symmetric about origin.
+
+    Despite the historical function name, this v6.3.1 implementation includes
+    both topological endpoints and circular support centers.  Endpoint clusters
+    preserve the path graph semantics; center clusters allow central symmetry of
+    circles/arcs to be exported as a relation between their Sketcher center
+    points.
+
+    Yields ``(a_meta, a_point_id, b_meta, b_point_id)``.
+    """
+    infos = []
+    for ni, (_kind, cx, cy, rep) in enumerate(_central_symmetry_nodes(geom_meta, tol)):
+        # The origin itself does not need a symmetric pair.
+        if abs(cx) <= tol and abs(cy) <= tol:
+            continue
+        infos.append((ni, cx, cy, rep))
+
+    used = set()
+    pairs = []
+    for i, (ci, cx, cy, rep) in enumerate(infos):
+        if ci in used:
+            continue
+        best = None
+        best_score = None
+        for cj, ox, oy, orep in infos[i + 1:]:
+            if cj in used:
+                continue
+            dx_mirror = abs(cx + ox)
+            dy_mirror = abs(cy + oy)
+            if dx_mirror > tol or dy_mirror > tol:
+                continue
+            # Require true opposite quadrants/half-planes, not near-origin noise.
+            if (cx * ox > -tol) and (cy * oy > -tol):
+                continue
+            score = dx_mirror + dy_mirror
+            if best_score is None or score < best_score:
+                best_score = score
+                best = (cj, orep)
+        if best is None:
+            continue
+        cj, orep = best
+        used.add(ci)
+        used.add(cj)
+        _order_a, meta_a, point_a, _pos_a = rep
+        _order_b, meta_b, point_b, _pos_b = orep
+        pairs.append((meta_a, point_a, meta_b, point_b))
+
+    for pair in pairs:
+        yield pair

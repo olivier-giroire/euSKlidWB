@@ -112,6 +112,11 @@ def _hard_fallback():
                 "alpha": 0
             }
         },
+        "export": {
+            "axial_symmetry_y": True,
+            "axial_symmetry_x": True,
+            "central_symmetry": False
+        },
         "feeling": {
             "snap_threshold": 20,
             "autogrid": "off",

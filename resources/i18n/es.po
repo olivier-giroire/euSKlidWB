@@ -278,3 +278,27 @@ msgstr ""
 
 msgid "Help messages"
 msgstr ""
+
+msgid "Central symmetry export"
+msgstr "Exportar simetría central"
+
+msgid "Detect point symmetry about the sketch origin during Path export"
+msgstr "Detectar simetría central respecto al origen del croquis durante la exportación del contorno"
+
+msgid "Export"
+msgstr "Exportación"
+
+msgid "Symmetry constraints"
+msgstr ""
+
+msgid "Axial symmetry Y export"
+msgstr ""
+
+msgid "Axial symmetry X export"
+msgstr ""
+
+msgid "Detect point symmetry about the sketch Y axis during Path export"
+msgstr ""
+
+msgid "Detect point symmetry about the sketch X axis during Path export"
+msgstr ""

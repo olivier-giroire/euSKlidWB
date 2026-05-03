@@ -137,5 +137,10 @@
     "console_messages": false,
     "help_messages": false,
     "function_reentrance": true
+  },
+  "export": {
+    "central_symmetry": false,
+    "axial_symmetry_y": true,
+    "axial_symmetry_x": true
   }
 }

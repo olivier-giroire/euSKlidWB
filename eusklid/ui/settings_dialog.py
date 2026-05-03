@@ -127,6 +127,7 @@ class SettingsDialog(QtGui.QDialog):
 
         self.tabs.addTab(self._build_gui_tab(), tr("GUI"))
         self.tabs.addTab(self._build_work_tab(), tr("Work"))
+        self.tabs.addTab(self._build_export_tab(), tr("Export"))
         self.tabs.addTab(self._build_feeling_tab(), tr("Feeling"))
 
         btns = QtGui.QHBoxLayout()
@@ -230,6 +231,30 @@ class SettingsDialog(QtGui.QDialog):
 
         v.addWidget(g_construction)
         v.addWidget(g_path)
+        v.addStretch()
+        return w
+
+    def _build_export_tab(self):
+        w = QtGui.QWidget()
+        v = QtGui.QVBoxLayout(w)
+
+        g_sym = QtGui.QGroupBox(tr("Symmetry constraints"))
+        f = QtGui.QFormLayout(g_sym)
+
+        self.export_axial_symmetry_y = QtGui.QCheckBox()
+        self.export_axial_symmetry_y.setToolTip(tr("Detect point symmetry about the sketch Y axis during Path export"))
+
+        self.export_axial_symmetry_x = QtGui.QCheckBox()
+        self.export_axial_symmetry_x.setToolTip(tr("Detect point symmetry about the sketch X axis during Path export"))
+
+        self.export_central_symmetry = QtGui.QCheckBox()
+        self.export_central_symmetry.setToolTip(tr("Detect point symmetry about the sketch origin during Path export"))
+
+        f.addRow(tr("Axial symmetry Y export"), self.export_axial_symmetry_y)
+        f.addRow(tr("Axial symmetry X export"), self.export_axial_symmetry_x)
+        f.addRow(tr("Central symmetry export"), self.export_central_symmetry)
+
+        v.addWidget(g_sym)
         v.addStretch()
         return w
 
@@ -345,6 +370,11 @@ class SettingsDialog(QtGui.QDialog):
                     "alpha": self.p_closed_alpha.value()
                 }
             },
+            "export": {
+                "axial_symmetry_y": self.export_axial_symmetry_y.isChecked(),
+                "axial_symmetry_x": self.export_axial_symmetry_x.isChecked(),
+                "central_symmetry": self.export_central_symmetry.isChecked()
+            },
             "feeling": {
                 "snap_threshold": self.snap_thresh.value(),
                 "autogrid": self.autogrid.currentText(),
@@ -408,6 +438,10 @@ class SettingsDialog(QtGui.QDialog):
             self.snap_thresh.setValue(cfg["feeling"].get("snap_threshold", 20))
             self.refresh_interval.setValue(cfg["feeling"].get("refresh_interval_ms", 120))
             self.function_reentrance.setChecked(bool(cfg["feeling"].get("function_reentrance", True)))
+            export_cfg = cfg.get("export", {})
+            self.export_axial_symmetry_y.setChecked(bool(export_cfg.get("axial_symmetry_y", True)))
+            self.export_axial_symmetry_x.setChecked(bool(export_cfg.get("axial_symmetry_x", True)))
+            self.export_central_symmetry.setChecked(bool(export_cfg.get("central_symmetry", False)))
             self.console_messages.setChecked(bool(cfg["feeling"].get("console_messages", False)))
             self.help_messages.setChecked(bool(cfg["feeling"].get("help_messages", False)))
             idx = self.autogrid.findText(cfg["feeling"].get("autogrid", cfg["feeling"].get("autocorrect", "off")))
