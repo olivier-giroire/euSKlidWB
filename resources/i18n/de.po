@@ -278,3 +278,45 @@ msgstr ""
 
 msgid "Help messages"
 msgstr ""
+
+msgid "Central symmetry export"
+msgstr "Zentrale Symmetrie exportieren"
+
+msgid "Detect point symmetry about the sketch origin during Path export"
+msgstr "Punktsymmetrie um den Sketch-Ursprung beim Pfadexport erkennen"
+
+msgid "Export"
+msgstr "Export"
+
+msgid "Symmetry constraints"
+msgstr ""
+
+msgid "Axial symmetry Y export"
+msgstr ""
+
+msgid "Axial symmetry X export"
+msgstr ""
+
+msgid "Detect point symmetry about the sketch Y axis during Path export"
+msgstr ""
+
+msgid "Detect point symmetry about the sketch X axis during Path export"
+msgstr ""
+
+msgid "Detect arbitrary symmetry axes"
+msgstr "Detect arbitrary symmetry axes"
+
+msgid "Detect arbitrary symmetry centers"
+msgstr "Detect arbitrary symmetry centers"
+
+msgid "Minimum symmetry score"
+msgstr "Minimum symmetry score"
+
+msgid "Detect non-axis-aligned symmetry axes during Path export"
+msgstr "Detect non-axis-aligned symmetry axes during Path export"
+
+msgid "Detect arbitrary symmetry centers during Path export"
+msgstr "Detect arbitrary symmetry centers during Path export"
+
+msgid "Minimum number of symmetric point pairs required to accept an arbitrary symmetry"
+msgstr "Minimum number of symmetric point pairs required to accept an arbitrary symmetry"

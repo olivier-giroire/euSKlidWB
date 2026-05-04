@@ -148,23 +148,30 @@ Et non, désolé, pour Windows, je ne sais pas, mais ça doit être dans la doc.
 ## 📦 Quelques images ...
 
 - Constructions
+
 ![Preview](docs/images/1-Constructions.png)
 
 - Contour
+
 ![Preview](docs/images/2-Path.png)
 
 - Export brut, très surcontraint
+
 ![Preview](docs/images/3-Export_brut.png)
 
 - Contraintes corrigées dans le Sketcher de FreeCAD
+
 ![Preview](docs/images/4-Exported__constrains_corrected_in_FC.png)
 
 - Contraintes modifiées dans le Sketcher de FreeCAD
+
 ![Preview](docs/images/5-Exported__constrained_and_edited_in_FC.png)
 
 - Génération d'un solide de révolution.
+
 ![Preview](docs/images/6-RevD.png)
 
 - Apperçu fonctionnel
+
 ![Preview](docs/images/7-euSKlid_anim.gif)
 
