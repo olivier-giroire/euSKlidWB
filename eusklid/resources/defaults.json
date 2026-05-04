@@ -141,6 +141,9 @@
   "export": {
     "central_symmetry": false,
     "axial_symmetry_y": true,
-    "axial_symmetry_x": true
+    "axial_symmetry_x": true,
+    "arbitrary_symmetry_axes": false,
+    "arbitrary_symmetry_centers": false,
+    "symmetry_min_score": 4
   }
 }

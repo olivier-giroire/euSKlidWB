@@ -250,9 +250,21 @@ class SettingsDialog(QtGui.QDialog):
         self.export_central_symmetry = QtGui.QCheckBox()
         self.export_central_symmetry.setToolTip(tr("Detect point symmetry about the sketch origin during Path export"))
 
+        self.export_arbitrary_symmetry_axes = QtGui.QCheckBox()
+        self.export_arbitrary_symmetry_axes.setToolTip(tr("Detect non-axis-aligned symmetry axes during Path export"))
+
+        self.export_arbitrary_symmetry_centers = QtGui.QCheckBox()
+        self.export_arbitrary_symmetry_centers.setToolTip(tr("Detect arbitrary symmetry centers during Path export"))
+
+        self.export_symmetry_min_score = make_spin(3, 99, 4)
+        self.export_symmetry_min_score.setToolTip(tr("Minimum number of symmetric point pairs required to accept an arbitrary symmetry"))
+
         f.addRow(tr("Axial symmetry Y export"), self.export_axial_symmetry_y)
         f.addRow(tr("Axial symmetry X export"), self.export_axial_symmetry_x)
         f.addRow(tr("Central symmetry export"), self.export_central_symmetry)
+        f.addRow(tr("Detect arbitrary symmetry axes"), self.export_arbitrary_symmetry_axes)
+        f.addRow(tr("Detect arbitrary symmetry centers"), self.export_arbitrary_symmetry_centers)
+        f.addRow(tr("Minimum symmetry score"), self.export_symmetry_min_score)
 
         v.addWidget(g_sym)
         v.addStretch()
@@ -373,7 +385,10 @@ class SettingsDialog(QtGui.QDialog):
             "export": {
                 "axial_symmetry_y": self.export_axial_symmetry_y.isChecked(),
                 "axial_symmetry_x": self.export_axial_symmetry_x.isChecked(),
-                "central_symmetry": self.export_central_symmetry.isChecked()
+                "central_symmetry": self.export_central_symmetry.isChecked(),
+                "arbitrary_symmetry_axes": self.export_arbitrary_symmetry_axes.isChecked(),
+                "arbitrary_symmetry_centers": self.export_arbitrary_symmetry_centers.isChecked(),
+                "symmetry_min_score": max(3, int(self.export_symmetry_min_score.value()))
             },
             "feeling": {
                 "snap_threshold": self.snap_thresh.value(),
@@ -442,6 +457,9 @@ class SettingsDialog(QtGui.QDialog):
             self.export_axial_symmetry_y.setChecked(bool(export_cfg.get("axial_symmetry_y", True)))
             self.export_axial_symmetry_x.setChecked(bool(export_cfg.get("axial_symmetry_x", True)))
             self.export_central_symmetry.setChecked(bool(export_cfg.get("central_symmetry", False)))
+            self.export_arbitrary_symmetry_axes.setChecked(bool(export_cfg.get("arbitrary_symmetry_axes", False)))
+            self.export_arbitrary_symmetry_centers.setChecked(bool(export_cfg.get("arbitrary_symmetry_centers", False)))
+            self.export_symmetry_min_score.setValue(max(3, int(export_cfg.get("symmetry_min_score", 4))))
             self.console_messages.setChecked(bool(cfg["feeling"].get("console_messages", False)))
             self.help_messages.setChecked(bool(cfg["feeling"].get("help_messages", False)))
             idx = self.autogrid.findText(cfg["feeling"].get("autogrid", cfg["feeling"].get("autocorrect", "off")))

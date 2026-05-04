@@ -296,3 +296,21 @@ msgstr "Détecter la symétrie axiale autour de l’axe Y du sketch lors de l’
 
 msgid "Detect point symmetry about the sketch X axis during Path export"
 msgstr "Détecter la symétrie axiale autour de l’axe X du sketch lors de l’export du contour"
+
+msgid "Detect arbitrary symmetry axes"
+msgstr "Détecter les axes de symétrie quelconques"
+
+msgid "Detect arbitrary symmetry centers"
+msgstr "Détecter les centres de symétrie quelconques"
+
+msgid "Minimum symmetry score"
+msgstr "Score minimal de symétrie"
+
+msgid "Detect non-axis-aligned symmetry axes during Path export"
+msgstr "Détecter les axes de symétrie non normés lors de l’export du contour"
+
+msgid "Detect arbitrary symmetry centers during Path export"
+msgstr "Détecter les centres de symétrie quelconques lors de l’export du contour"
+
+msgid "Minimum number of symmetric point pairs required to accept an arbitrary symmetry"
+msgstr "Nombre minimal de paires de points symétriques requis pour accepter une symétrie quelconque"

@@ -323,3 +323,412 @@ def mirrored_endpoint_pairs_center_origin(geom_meta, tol):
 
     for pair in pairs:
         yield pair
+
+
+
+def _symmetry_node_key(node):
+    """Return a stable key for a point-like symmetry node."""
+    if len(node) >= 5:
+        _kind, _cx, _cy, rep, _ctx = node
+    else:
+        _kind, _cx, _cy, rep = node
+    _order, meta, point_id, _pos = rep
+    return (int(meta.get("index", _order)), int(point_id))
+
+
+def _node_rep(node):
+    return node[3]
+
+
+def _node_context(node):
+    if len(node) >= 5:
+        return node[4] or {}
+    kind = node[0]
+    _order, meta, point_id, _pos = _node_rep(node)
+    if int(point_id) == 3 or kind == "center":
+        return {"kind": "center", "types": {meta.get("type")}, "degree": 1, "radius": meta.get("radius")}
+    return {"kind": "endpoint", "types": {meta.get("type")}, "degree": 1}
+
+
+def _radius_close(a, b, tol):
+    try:
+        ra = abs(float(a))
+        rb = abs(float(b))
+    except Exception:
+        return False
+    scale = max(ra, rb, 1.0)
+    return abs(ra - rb) <= max(float(tol), 1e-5 * scale)
+
+
+def _endpoint_cluster_role(cluster):
+    types = set()
+    orders = []
+    for order, meta, _point_id, _pos in cluster:
+        types.add(str(meta.get("type") or "unknown"))
+        try:
+            orders.append(int(order))
+        except Exception:
+            pass
+    return {
+        "kind": "endpoint",
+        "types": types,
+        "degree": len(cluster),
+        "path_span": (max(orders) - min(orders)) if orders else 0,
+        "has_segment": "segment" in types,
+        "has_arc": "arc" in types,
+    }
+
+
+def _arbitrary_symmetry_nodes(geom_meta, tol):
+    """Return point-like nodes enriched with local context for v6.4e.
+
+    Arbitrary centers are dangerous if selected only by raw pair count.  This
+    helper keeps the same representative geometry used by the previous passes,
+    but adds a compact local role used to score pair relevance:
+
+    - endpoint clusters know whether they are segment/segment, arc/arc, or
+      arc/segment junctions;
+    - center clusters know their radius and are therefore comparable only with
+      similar circle/arc centers.
+    """
+    nodes = []
+
+    for cluster in endpoint_clusters(geom_meta, tol):
+        cx, cy = _cluster_center(cluster)
+        rep = min(cluster, key=lambda item: int(item[0]))
+        ctx = _endpoint_cluster_role(cluster)
+        nodes.append(("endpoint", cx, cy, rep, ctx))
+
+    center_clusters = []
+    for order, meta in enumerate(geom_meta):
+        center = meta.get("center")
+        if center is None:
+            continue
+        item = (order, meta, 3, center)
+        found = None
+        for cluster in center_clusters:
+            if dist(center, cluster[0][3]) <= tol:
+                found = cluster
+                break
+        if found is None:
+            center_clusters.append([item])
+        else:
+            found.append(item)
+
+    for cluster in center_clusters:
+        cx, cy = _cluster_center(cluster)
+        rep = min(cluster, key=lambda item: int(item[0]))
+        radii = []
+        types = set()
+        for _order, meta, _point, _pos in cluster:
+            types.add(str(meta.get("type") or "unknown"))
+            try:
+                radii.append(abs(float(meta.get("radius"))))
+            except Exception:
+                pass
+        radius = sum(radii) / len(radii) if radii else None
+        ctx = {"kind": "center", "types": types, "degree": len(cluster), "radius": radius}
+        nodes.append(("center", cx, cy, rep, ctx))
+
+    return nodes
+
+
+def _pair_relevance(a, b, tol):
+    """Return a deterministic semantic relevance score for a symmetry pair.
+
+    The previous v6.4d score counted independent pairs.  That can select a
+    very local, artificial center if several unrelated endpoints happen to have
+    the same midpoint.  v6.4e keeps only comparable local roles and ranks them:
+
+    - similar circle/arc centers are highly structural;
+    - arc/segment junctions are strong path features;
+    - plain segment endpoints are weak but still valid;
+    - center/endpoint pairs are rejected as usually accidental.
+    """
+    ca = _node_context(a)
+    cb = _node_context(b)
+    ka = ca.get("kind")
+    kb = cb.get("kind")
+
+    if ka != kb:
+        return 0.0
+
+    if ka == "center":
+        # Symmetry between centers is only meaningful if the supports are
+        # comparable.  Equal/similar radii make this a very strong signal.
+        ra = ca.get("radius")
+        rb = cb.get("radius")
+        if ra is not None and rb is not None:
+            if _radius_close(ra, rb, tol):
+                return 4.0
+            return 1.0
+        return 2.0
+
+    if ka == "endpoint":
+        ta = set(ca.get("types") or [])
+        tb = set(cb.get("types") or [])
+        if not ta or not tb:
+            return 0.5
+        common = ta.intersection(tb)
+        if not common:
+            return 0.0
+
+        # Arc/segment junctions are much more meaningful than isolated path
+        # endpoints because they preserve a local construction role.
+        if ca.get("has_arc") and ca.get("has_segment") and cb.get("has_arc") and cb.get("has_segment"):
+            return 2.5
+        if ca.get("has_arc") and cb.get("has_arc"):
+            return 2.0
+        if ca.get("has_segment") and cb.get("has_segment"):
+            # Degree > 1 is a true topological junction.  Degree == 1 is often
+            # just a free endpoint and should not dominate structural centers.
+            if int(ca.get("degree", 1)) > 1 and int(cb.get("degree", 1)) > 1:
+                return 1.5
+            return 1.0
+        return 0.5
+
+    return 0.0
+
+
+def arbitrary_center_symmetry_candidates(geom_meta, tol, min_score=4, include_origin=False):
+    """Detect arbitrary central symmetry centers with semantic relevance.
+
+    Every pair of comparable point-like nodes defines a possible center.  A
+    candidate is accepted only when at least ``min_score`` independent relevant
+    pairs share the same midpoint.  Candidates also carry ``weighted_score`` so
+    the emission pass can prefer structural symmetries over accidental local
+    branches with the same raw count.
+
+    ``include_origin`` controls the interaction with the explicit origin-center
+    symmetry mode.  When Central symmetry export is enabled, (0,0) is handled by
+    that dedicated pass and should not be emitted again here.  When it is
+    disabled, (0,0) is allowed to compete as an ordinary arbitrary center.
+    """
+    try:
+        min_score = max(3, int(min_score))
+    except Exception:
+        min_score = 4
+
+    nodes = list(_arbitrary_symmetry_nodes(geom_meta, tol))
+    raw = []
+    for i, a in enumerate(nodes):
+        _ak, ax, ay, _arep = a[:4]
+        for b in nodes[i + 1:]:
+            _bk, bx, by, _brep = b[:4]
+            relevance = _pair_relevance(a, b, tol)
+            if relevance <= 0.0:
+                continue
+            mx = (float(ax) + float(bx)) * 0.5
+            my = (float(ay) + float(by)) * 0.5
+            # Origin central symmetry has its own explicit toggle.  Exclude it
+            # only when the dedicated origin-center pass is enabled; otherwise
+            # let (0,0) compete normally as an arbitrary center.
+            if not include_origin and abs(mx) <= tol and abs(my) <= tol:
+                continue
+            raw.append((mx, my, a, b, float(relevance)))
+
+    clusters = []
+    for item in raw:
+        mx, my, _a, _b, _rel = item
+        found = None
+        for cluster in clusters:
+            cx, cy = cluster["center"]
+            if dist((mx, my), (cx, cy)) <= tol:
+                found = cluster
+                break
+        if found is None:
+            clusters.append({"center": (mx, my), "items": [item]})
+        else:
+            found["items"].append(item)
+            # Maintain a stable average center for logging.
+            n = len(found["items"])
+            cx, cy = found["center"]
+            found["center"] = ((cx * (n - 1) + mx) / n, (cy * (n - 1) + my) / n)
+
+    candidates = []
+    for cluster in clusters:
+        used_nodes = set()
+        kept_pairs = []
+        weighted_score = 0.0
+        cx, cy = cluster["center"]
+        # Prefer strong semantic pairs first, then numeric proximity to the
+        # cluster center.  This prevents weak accidental endpoints from taking
+        # slots before circle centers or arc/segment junctions.
+        sorted_items = sorted(
+            cluster["items"],
+            key=lambda it: (-float(it[4]), dist((it[0], it[1]), (cx, cy))),
+        )
+        for _mx, _my, a, b, relevance in sorted_items:
+            ka = _symmetry_node_key(a)
+            kb = _symmetry_node_key(b)
+            if ka in used_nodes or kb in used_nodes:
+                continue
+            used_nodes.add(ka)
+            used_nodes.add(kb)
+            kept_pairs.append((a, b, float(relevance)))
+            weighted_score += float(relevance)
+
+        if len(kept_pairs) < min_score:
+            continue
+        candidates.append({
+            "center": cluster["center"],
+            "score": len(kept_pairs),
+            "raw_pairs": len(cluster["items"]),
+            "weighted_score": weighted_score,
+            "pairs": kept_pairs,
+        })
+
+    candidates.sort(
+        key=lambda c: (
+            -float(c.get("weighted_score", 0.0)),
+            -int(c.get("score", 0)),
+            float(abs(c["center"][0])) + float(abs(c["center"][1])),
+        )
+    )
+    for candidate in candidates:
+        yield candidate
+
+def _canonical_axis_from_pair(a, b, tol):
+    """Return a canonical perpendicular-bisector axis for node pair ``a``/``b``.
+
+    A symmetry axis candidate is the perpendicular bisector of the two point-like
+    nodes.  It is stored in normal form ``n.x * x + n.y * y = offset`` plus a
+    direction vector useful for Sketcher construction-line emission.
+    """
+    _ak, ax, ay, _arep = a[:4]
+    _bk, bx, by, _brep = b[:4]
+    dx = float(bx) - float(ax)
+    dy = float(by) - float(ay)
+    length = math.hypot(dx, dy)
+    if length <= max(float(tol), 1e-12):
+        return None
+
+    # Reflection axis normal is the segment AB direction.
+    nx = dx / length
+    ny = dy / length
+    mx = (float(ax) + float(bx)) * 0.5
+    my = (float(ay) + float(by)) * 0.5
+    offset = nx * mx + ny * my
+
+    # Canonical orientation so equivalent axes cluster together.
+    if nx < -tol or (abs(nx) <= tol and ny < 0.0):
+        nx = -nx
+        ny = -ny
+        offset = -offset
+
+    # Axis direction is perpendicular to the normal.
+    ux = -ny
+    uy = nx
+    return {
+        "point": (mx, my),
+        "normal": (nx, ny),
+        "direction": (ux, uy),
+        "offset": offset,
+    }
+
+
+def _axis_close(axis_a, axis_b, tol):
+    nax, nay = axis_a["normal"]
+    nbx, nby = axis_b["normal"]
+    # Normals are canonical, so same-axis normals should be close, not opposite.
+    dn = math.hypot(float(nax) - float(nbx), float(nay) - float(nby))
+    if dn > max(1e-6, 1e-3):
+        return False
+    scale = max(abs(float(axis_a.get("offset", 0.0))), abs(float(axis_b.get("offset", 0.0))), 1.0)
+    return abs(float(axis_a.get("offset", 0.0)) - float(axis_b.get("offset", 0.0))) <= max(float(tol), 1e-5 * scale)
+
+
+def arbitrary_axis_symmetry_candidates(geom_meta, tol, min_score=4):
+    """Detect arbitrary axial symmetry candidates with semantic relevance.
+
+    Each comparable node pair defines a perpendicular-bisector axis.  Candidates
+    are clustered by line normal/offset, then reduced to independent node pairs
+    exactly like arbitrary centers.  The result is intentionally conservative:
+    only axes with at least ``min_score`` independent relevant pairs are yielded.
+    """
+    try:
+        min_score = max(3, int(min_score))
+    except Exception:
+        min_score = 4
+
+    nodes = list(_arbitrary_symmetry_nodes(geom_meta, tol))
+    raw = []
+    for i, a in enumerate(nodes):
+        for b in nodes[i + 1:]:
+            relevance = _pair_relevance(a, b, tol)
+            if relevance <= 0.0:
+                continue
+            axis = _canonical_axis_from_pair(a, b, tol)
+            if axis is None:
+                continue
+            raw.append((axis, a, b, float(relevance)))
+
+    clusters = []
+    for item in raw:
+        axis, _a, _b, _rel = item
+        found = None
+        for cluster in clusters:
+            if _axis_close(axis, cluster["axis"], tol):
+                found = cluster
+                break
+        if found is None:
+            clusters.append({"axis": dict(axis), "items": [item]})
+        else:
+            found["items"].append(item)
+            # Maintain stable averaged axis parameters for logging/emission.
+            n = len(found["items"])
+            old = found["axis"]
+            nx = (old["normal"][0] * (n - 1) + axis["normal"][0]) / n
+            ny = (old["normal"][1] * (n - 1) + axis["normal"][1]) / n
+            nn = math.hypot(nx, ny) or 1.0
+            nx, ny = nx / nn, ny / nn
+            off = (old["offset"] * (n - 1) + axis["offset"]) / n
+            px = nx * off
+            py = ny * off
+            found["axis"] = {
+                "point": (px, py),
+                "normal": (nx, ny),
+                "direction": (-ny, nx),
+                "offset": off,
+            }
+
+    candidates = []
+    for cluster in clusters:
+        used_nodes = set()
+        kept_pairs = []
+        weighted_score = 0.0
+        axis = cluster["axis"]
+        sorted_items = sorted(
+            cluster["items"],
+            key=lambda it: (-float(it[3]), abs(float(it[0]["offset"]) - float(axis["offset"]))),
+        )
+        for _axis, a, b, relevance in sorted_items:
+            ka = _symmetry_node_key(a)
+            kb = _symmetry_node_key(b)
+            if ka in used_nodes or kb in used_nodes:
+                continue
+            used_nodes.add(ka)
+            used_nodes.add(kb)
+            kept_pairs.append((a, b, float(relevance)))
+            weighted_score += float(relevance)
+
+        if len(kept_pairs) < min_score:
+            continue
+        candidates.append({
+            "axis": axis,
+            "score": len(kept_pairs),
+            "raw_pairs": len(cluster["items"]),
+            "weighted_score": weighted_score,
+            "pairs": kept_pairs,
+        })
+
+    candidates.sort(
+        key=lambda c: (
+            -float(c.get("weighted_score", 0.0)),
+            -int(c.get("score", 0)),
+            abs(float(c["axis"].get("offset", 0.0))),
+        )
+    )
+    for candidate in candidates:
+        yield candidate
+

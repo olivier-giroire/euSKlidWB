@@ -302,3 +302,21 @@ msgstr ""
 
 msgid "Detect point symmetry about the sketch X axis during Path export"
 msgstr ""
+
+msgid "Detect arbitrary symmetry axes"
+msgstr "Detect arbitrary symmetry axes"
+
+msgid "Detect arbitrary symmetry centers"
+msgstr "Detect arbitrary symmetry centers"
+
+msgid "Minimum symmetry score"
+msgstr "Minimum symmetry score"
+
+msgid "Detect non-axis-aligned symmetry axes during Path export"
+msgstr "Detect non-axis-aligned symmetry axes during Path export"
+
+msgid "Detect arbitrary symmetry centers during Path export"
+msgstr "Detect arbitrary symmetry centers during Path export"
+
+msgid "Minimum number of symmetric point pairs required to accept an arbitrary symmetry"
+msgstr "Minimum number of symmetric point pairs required to accept an arbitrary symmetry"

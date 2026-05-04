@@ -27,6 +27,8 @@ from .detect import (
 from .topology import (
     connected_junctions,
     endpoint_coincidence_pairs,
+    arbitrary_center_symmetry_candidates,
+    arbitrary_axis_symmetry_candidates,
     mirrored_endpoint_pairs_center_origin,
     mirrored_endpoint_pairs_x_axis,
     mirrored_endpoint_pairs_y_axis,
@@ -209,6 +211,30 @@ def _central_symmetry_enabled():
         return False
 
 
+def _arbitrary_symmetry_centers_enabled():
+    try:
+        cfg = get_config()
+        return bool(cfg.get("export", {}).get("arbitrary_symmetry_centers", False))
+    except Exception:
+        return False
+
+
+def _arbitrary_symmetry_axes_enabled():
+    try:
+        cfg = get_config()
+        return bool(cfg.get("export", {}).get("arbitrary_symmetry_axes", False))
+    except Exception:
+        return False
+
+
+def _arbitrary_symmetry_min_score():
+    try:
+        cfg = get_config()
+        return max(3, int(cfg.get("export", {}).get("symmetry_min_score", 4)))
+    except Exception:
+        return 4
+
+
 def _get_or_create_locked_origin_point(sk, Sketcher, stats, exported_constraint_indices):
     """Return a construction point at sketch origin for point symmetry.
 
@@ -232,13 +258,78 @@ def _get_or_create_locked_origin_point(sk, Sketcher, stats, exported_constraint_
             setattr(sk, "_eusklid_origin_point_index", int(idx))
         except Exception:
             pass
-        # Lock keeps the construction point at the sketch origin.  Some
-        # FreeCAD builds may reject the exact overload; the safe wrapper keeps
-        # this non-fatal.
-        _add_constraint_safe(sk, Sketcher, stats, exported_constraint_indices, "Lock", int(idx), 1, 0.0, 0.0)
+        # Lock keeps the construction point at the sketch origin.  The
+        # FreeCAD Sketcher constructor accepts the compact ``Lock, geoId``
+        # overload for point geometry; coordinates are already carried by the
+        # construction point itself.
+        _add_constraint_safe(sk, Sketcher, stats, exported_constraint_indices, "Lock", int(idx))
         return int(idx)
     except Exception as exc:
         _log("Export central symmetry skipped: cannot create origin point: %s" % exc)
+        return None
+
+
+def _get_or_create_locked_arbitrary_center_point(sk, Sketcher, stats, exported_constraint_indices, cx, cy):
+    """Create a locked construction point at an arbitrary symmetry center.
+
+    The point is used as the third point of Sketcher ``Symmetric`` constraints.
+    It is intentionally locked so the detected center remains an explicit
+    construction reference instead of a free extra degree of freedom.
+    """
+    try:
+        import FreeCAD as App
+        import Part
+        idx = sk.addGeometry(Part.Point(App.Vector(float(cx), float(cy), 0)), True)
+        # Keep arbitrary symmetry centers explicit and stable.  The point is
+        # created at the detected coordinates, then locked with the compact
+        # FreeCAD overload.
+        _add_constraint_safe(sk, Sketcher, stats, exported_constraint_indices, "Lock", int(idx))
+        return int(idx)
+    except Exception as exc:
+        _log("Export arbitrary symmetry center skipped: cannot create center point: %s" % exc)
+        return None
+
+
+def _sketch_bbox_span(geom_meta):
+    xs = []
+    ys = []
+    for meta in geom_meta:
+        for key in ("start", "end", "center"):
+            pos = meta.get(key)
+            if pos is None:
+                continue
+            try:
+                xs.append(float(pos[0]))
+                ys.append(float(pos[1]))
+            except Exception:
+                pass
+    if not xs or not ys:
+        return 10.0
+    return max(max(xs) - min(xs), max(ys) - min(ys), 10.0)
+
+
+def _get_or_create_locked_arbitrary_axis_line(sk, Sketcher, stats, exported_constraint_indices, axis, geom_meta):
+    """Create a locked construction line for an arbitrary symmetry axis."""
+    try:
+        import FreeCAD as App
+        import Part
+        px, py = axis.get("point", (0.0, 0.0))
+        ux, uy = axis.get("direction", (1.0, 0.0))
+        norm = (float(ux) ** 2 + float(uy) ** 2) ** 0.5
+        if norm <= 1e-12:
+            return None
+        ux, uy = float(ux) / norm, float(uy) / norm
+        half = max(_sketch_bbox_span(geom_meta) * 0.75, 5.0)
+        p1 = App.Vector(float(px) - ux * half, float(py) - uy * half, 0)
+        p2 = App.Vector(float(px) + ux * half, float(py) + uy * half, 0)
+        idx = sk.addGeometry(Part.LineSegment(p1, p2), True)
+        # Lock the construction axis so the detected mirror line stays an
+        # explicit reference.  Compact Lock is accepted by recent Sketcher
+        # builds for construction geometry; failure remains non-fatal.
+        _add_constraint_safe(sk, Sketcher, stats, exported_constraint_indices, "Lock", int(idx))
+        return int(idx)
+    except Exception as exc:
+        _log("Export arbitrary symmetry axis skipped: cannot create axis line: %s" % exc)
         return None
 
 
@@ -296,6 +387,22 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join):
         "central_symmetry_disabled": 0,
         "symmetry_skipped_by_cluster": 0,
         "hv_skipped_by_symmetry": 0,
+        "arbitrary_center_candidates": 0,
+        "arbitrary_center_pairs": 0,
+        "arbitrary_centers_disabled": 0,
+        "arbitrary_center_selected": 0,
+        "arbitrary_center_selected_pairs": 0,
+        "arbitrary_center_skipped_by_competition": 0,
+        "arbitrary_center_greedy_rounds": 0,
+        "arbitrary_center_weighted_score": 0.0,
+        "arbitrary_axis_candidates": 0,
+        "arbitrary_axis_pairs": 0,
+        "arbitrary_axis_selected": 0,
+        "arbitrary_axis_selected_pairs": 0,
+        "arbitrary_axis_skipped_by_competition": 0,
+        "arbitrary_axis_greedy_rounds": 0,
+        "arbitrary_axis_weighted_score": 0.0,
+        "arbitrary_axes_disabled": 0,
     }
     exported_constraint_indices = []
 
@@ -389,6 +496,226 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join):
                 mark_symmetry_pair(a, a_point, b, b_point)
     else:
         stats["central_symmetry_disabled"] = len(list(mirrored_endpoint_pairs_center_origin(geom_meta, symmetry_tol)))
+
+    # 1c) v6.5.2 arbitrary symmetry axes.
+    #
+    # In practical CAD usage, axial symmetries are generally more structural
+    # than central symmetries.  Arbitrary axes are therefore selected before
+    # arbitrary centers and consume the same residual symmetry budget.
+    min_sym_score = _arbitrary_symmetry_min_score()
+    #
+    # Axes are detected as perpendicular bisectors of relevant point pairs.
+    # They are selected after axial/origin/arbitrary-center symmetries and use
+    # the same residual greedy budget: a point already consumed by a stronger
+    # symmetry family cannot be reused by an arbitrary axis.
+    arbitrary_axis_constraint_count = 0
+
+    def useful_pairs_for_axis_candidate(candidate):
+        useful = []
+        for item in candidate.get("pairs", []):
+            if len(item) >= 3:
+                node_a, node_b, relevance = item[:3]
+            else:
+                node_a, node_b = item[:2]
+                relevance = 1.0
+            _kind_a, _ax, _ay, rep_a = node_a[:4]
+            _kind_b, _bx, _by, rep_b = node_b[:4]
+            _order_a, meta_a, point_a, _pos_a = rep_a
+            _order_b, meta_b, point_b, _pos_b = rep_b
+            if symmetry_pair_available(meta_a, point_a, meta_b, point_b):
+                useful.append((meta_a, point_a, meta_b, point_b, float(relevance)))
+        return useful
+
+    if _arbitrary_symmetry_axes_enabled():
+        remaining_axis_candidates = list(arbitrary_axis_symmetry_candidates(geom_meta, symmetry_tol, min_sym_score))
+        stats["arbitrary_axis_candidates"] = len(remaining_axis_candidates)
+        stats["arbitrary_axis_pairs"] = sum(int(c.get("score", 0)) for c in remaining_axis_candidates)
+
+        while remaining_axis_candidates:
+            scored = []
+            for idx, candidate in enumerate(remaining_axis_candidates):
+                useful_pairs = useful_pairs_for_axis_candidate(candidate)
+                useful_score = len(useful_pairs)
+                useful_weight = sum(float(p[4]) for p in useful_pairs)
+                raw_score = int(candidate.get("score", 0))
+                raw_pairs = int(candidate.get("raw_pairs", 0))
+                weighted_score = float(candidate.get("weighted_score", raw_score))
+                axis = candidate.get("axis", {})
+                px, py = axis.get("point", (0.0, 0.0))
+                ux, uy = axis.get("direction", (1.0, 0.0))
+                _log(
+                    "Export arbitrary symmetry axis candidate: point=(%.6g, %.6g) dir=(%.6g, %.6g) score=%d weighted=%.2f raw_pairs=%d useful=%d useful_weight=%.2f"
+                    % (float(px), float(py), float(ux), float(uy), raw_score, weighted_score, raw_pairs, useful_score, useful_weight)
+                )
+                if useful_score >= min_sym_score:
+                    scored.append((useful_weight, useful_score, weighted_score, raw_score, -idx, idx, candidate, useful_pairs))
+
+            if not scored:
+                stats["arbitrary_axis_skipped_by_competition"] += len(remaining_axis_candidates)
+                break
+
+            scored.sort(reverse=True)
+            useful_weight, useful_score, weighted_score, raw_score, _neg_idx, idx, candidate, useful_pairs = scored[0]
+            axis = candidate.get("axis", {})
+            axis_index = _get_or_create_locked_arbitrary_axis_line(
+                sk, Sketcher, stats, exported_constraint_indices, axis, geom_meta
+            )
+            if axis_index is None:
+                remaining_axis_candidates.pop(idx)
+                stats["arbitrary_axis_skipped_by_competition"] += 1
+                continue
+
+            kept_for_axis = 0
+            kept_weight = 0.0
+            for meta_a, point_a, meta_b, point_b, relevance in useful_pairs:
+                if not symmetry_pair_available(meta_a, point_a, meta_b, point_b):
+                    stats["symmetry_skipped_by_cluster"] += 1
+                    stats["skipped_relations"] += 1
+                    continue
+                if add_constraint_safe("Symmetric", meta_a["index"], point_a, meta_b["index"], point_b, axis_index):
+                    arbitrary_axis_constraint_count += 1
+                    kept_for_axis += 1
+                    kept_weight += float(relevance)
+                    mark_symmetry_pair(meta_a, point_a, meta_b, point_b)
+
+            if kept_for_axis > 0:
+                stats["arbitrary_axis_selected"] += 1
+                stats["arbitrary_axis_selected_pairs"] += kept_for_axis
+                stats["arbitrary_axis_greedy_rounds"] += 1
+                stats["arbitrary_axis_weighted_score"] += float(kept_weight)
+                px, py = axis.get("point", (0.0, 0.0))
+                ux, uy = axis.get("direction", (1.0, 0.0))
+                _log(
+                    "Export arbitrary symmetry axis selected: point=(%.6g, %.6g) dir=(%.6g, %.6g) useful=%d useful_weight=%.2f raw_score=%d weighted=%.2f kept=%d"
+                    % (float(px), float(py), float(ux), float(uy), useful_score, kept_weight, raw_score, weighted_score, kept_for_axis)
+                )
+            else:
+                px, py = axis.get("point", (0.0, 0.0))
+                _log("Export arbitrary symmetry axis emitted no constraints: point=(%.6g, %.6g)" % (float(px), float(py)))
+
+            remaining_axis_candidates.pop(idx)
+    else:
+        stats["arbitrary_axes_disabled"] = 1
+
+    # 1d) v6.5.2 arbitrary central symmetry candidates.
+    #
+    # v6.4c processed candidates in their raw detection order.  That was good
+    # enough to prove emission, but it could still pick a high raw-score center
+    # whose useful pairs had already been mostly consumed by axial/origin
+    # symmetries, before a lower raw-score candidate with more remaining useful
+    # pairs.  v6.4d turns this into a residual greedy selection:
+    #
+    #   1. compute useful pairs against the symmetry state already emitted
+    #      by Y/X/origin passes;
+    #   2. select the candidate with the highest useful score;
+    #   3. emit it and mark its points as consumed;
+    #   4. recompute the useful scores of the remaining candidates;
+    #   5. stop when no candidate still reaches the configured threshold.
+    #
+    # This is still intentionally simple, but it makes arbitrary centers
+    # cooperate with the global symmetry budget instead of competing blindly.
+    arbitrary_center_constraint_count = 0
+
+    def useful_pairs_for_candidate(candidate):
+        useful = []
+        for item in candidate.get("pairs", []):
+            # v6.4e stores semantic relevance as the third tuple item while
+            # remaining backward-compatible with v6.4d two-item pairs.
+            if len(item) >= 3:
+                node_a, node_b, relevance = item[:3]
+            else:
+                node_a, node_b = item[:2]
+                relevance = 1.0
+            _kind_a, _ax, _ay, rep_a = node_a[:4]
+            _kind_b, _bx, _by, rep_b = node_b[:4]
+            _order_a, meta_a, point_a, _pos_a = rep_a
+            _order_b, meta_b, point_b, _pos_b = rep_b
+            if symmetry_pair_available(meta_a, point_a, meta_b, point_b):
+                useful.append((meta_a, point_a, meta_b, point_b, float(relevance)))
+        return useful
+
+    if _arbitrary_symmetry_centers_enabled():
+        # If explicit origin central symmetry is disabled, (0,0) must remain a
+        # valid arbitrary-center candidate.  Disabling the dedicated mode means
+        # "do not force origin symmetry through the specialized pass", not
+        # "ban the origin from arbitrary detection".
+        remaining_candidates = list(arbitrary_center_symmetry_candidates(
+            geom_meta, symmetry_tol, min_sym_score, include_origin=not _central_symmetry_enabled()
+        ))
+        stats["arbitrary_center_candidates"] = len(remaining_candidates)
+        stats["arbitrary_center_pairs"] = sum(int(c.get("score", 0)) for c in remaining_candidates)
+
+        while remaining_candidates:
+            scored = []
+            for idx, candidate in enumerate(remaining_candidates):
+                useful_pairs = useful_pairs_for_candidate(candidate)
+                useful_score = len(useful_pairs)
+                useful_weight = sum(float(p[4]) for p in useful_pairs)
+                raw_score = int(candidate.get("score", 0))
+                raw_pairs = int(candidate.get("raw_pairs", 0))
+                weighted_score = float(candidate.get("weighted_score", raw_score))
+                cx, cy = candidate.get("center", (0.0, 0.0))
+                _log(
+                    "Export arbitrary symmetry center candidate: center=(%.6g, %.6g) score=%d weighted=%.2f raw_pairs=%d useful=%d useful_weight=%.2f"
+                    % (float(cx), float(cy), raw_score, weighted_score, raw_pairs, useful_score, useful_weight)
+                )
+                if useful_score >= min_sym_score:
+                    # Primary ranking is semantic relevance, not raw count.
+                    scored.append((useful_weight, useful_score, weighted_score, raw_score, -idx, idx, candidate, useful_pairs))
+
+            if not scored:
+                # Every remaining center has become redundant with symmetries
+                # already emitted or with higher-ranked arbitrary centers.
+                stats["arbitrary_center_skipped_by_competition"] += len(remaining_candidates)
+                break
+
+            scored.sort(reverse=True)
+            useful_weight, useful_score, weighted_score, raw_score, _neg_idx, idx, candidate, useful_pairs = scored[0]
+            cx, cy = candidate.get("center", (0.0, 0.0))
+            center_index = _get_or_create_locked_arbitrary_center_point(
+                sk, Sketcher, stats, exported_constraint_indices, cx, cy
+            )
+            if center_index is None:
+                remaining_candidates.pop(idx)
+                stats["arbitrary_center_skipped_by_competition"] += 1
+                continue
+
+            kept_for_center = 0
+            kept_weight = 0.0
+            for meta_a, point_a, meta_b, point_b, relevance in useful_pairs:
+                # Re-check availability because each emitted pair marks its
+                # endpoints.  This protects the greedy pass from stale scores.
+                if not symmetry_pair_available(meta_a, point_a, meta_b, point_b):
+                    stats["symmetry_skipped_by_cluster"] += 1
+                    stats["skipped_relations"] += 1
+                    continue
+                if _add_central_symmetry_safe(
+                    sk, Sketcher, stats, exported_constraint_indices,
+                    meta_a, point_a, meta_b, point_b, center_index
+                ):
+                    arbitrary_center_constraint_count += 1
+                    kept_for_center += 1
+                    kept_weight += float(relevance)
+                    mark_symmetry_pair(meta_a, point_a, meta_b, point_b)
+
+            if kept_for_center > 0:
+                stats["arbitrary_center_selected"] += 1
+                stats["arbitrary_center_selected_pairs"] += kept_for_center
+                stats["arbitrary_center_greedy_rounds"] += 1
+                stats["arbitrary_center_weighted_score"] += float(kept_weight)
+                _log(
+                    "Export arbitrary symmetry center selected: center=(%.6g, %.6g) useful=%d useful_weight=%.2f raw_score=%d weighted=%.2f kept=%d"
+                    % (float(cx), float(cy), useful_score, kept_weight, raw_score, weighted_score, kept_for_center)
+                )
+            else:
+                _log(
+                    "Export arbitrary symmetry center emitted no constraints: center=(%.6g, %.6g)"
+                    % (float(cx), float(cy))
+                )
+
+            remaining_candidates.pop(idx)
+    else:
+        stats["arbitrary_centers_disabled"] = 1
 
     # Keep traversal junctions separately for local smoothness decisions.
     junctions = list(connected_junctions(geom_meta, tol_join))
@@ -505,7 +832,7 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join):
             stats["skipped_dimensions"] += 1
 
     _log(
-        "Export constraints v6.3.3 symmetry-modes: endpoint_coincidences=%d symmetry_y=%d symmetry_x=%d symmetry_center=%d symmetry_y_disabled=%d symmetry_x_disabled=%d central_symmetry_disabled=%d symmetry_skipped_by_cluster=%d traversal_junctions=%d hv=%d collinear_groups=%d collinear_members=%d collinear_links=%d circle_groups=%d circle_members=%d circle_links=%d tangencies=%d hv_skipped_by_symmetry=%d skipped_relations=%d skipped_dimension_sources=%d added=%d failed=%d"
+        "Export constraints v6.5.2 axes-before-centers: endpoint_coincidences=%d symmetry_y=%d symmetry_x=%d symmetry_center=%d symmetry_y_disabled=%d symmetry_x_disabled=%d central_symmetry_disabled=%d symmetry_skipped_by_cluster=%d traversal_junctions=%d hv=%d collinear_groups=%d collinear_members=%d collinear_links=%d circle_groups=%d circle_members=%d circle_links=%d tangencies=%d hv_skipped_by_symmetry=%d arbitrary_center_candidates=%d arbitrary_center_pairs=%d arbitrary_center_selected=%d arbitrary_center_selected_pairs=%d arbitrary_center_greedy_rounds=%d arbitrary_center_weighted_score=%.2f arbitrary_center_skipped_by_competition=%d arbitrary_centers_disabled=%d arbitrary_axis_candidates=%d arbitrary_axis_pairs=%d arbitrary_axis_selected=%d arbitrary_axis_selected_pairs=%d arbitrary_axis_greedy_rounds=%d arbitrary_axis_weighted_score=%.2f arbitrary_axis_skipped_by_competition=%d arbitrary_axes_disabled=%d skipped_relations=%d skipped_dimension_sources=%d added=%d failed=%d"
         % (
             len(endpoint_pairs),
             stats["symmetry_y"],
@@ -525,6 +852,22 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join):
             circle_count,
             tangent_count,
             stats["hv_skipped_by_symmetry"],
+            stats["arbitrary_center_candidates"],
+            stats["arbitrary_center_pairs"],
+            stats["arbitrary_center_selected"],
+            stats["arbitrary_center_selected_pairs"],
+            stats["arbitrary_center_greedy_rounds"],
+            float(stats["arbitrary_center_weighted_score"]),
+            stats["arbitrary_center_skipped_by_competition"],
+            stats["arbitrary_centers_disabled"],
+            stats["arbitrary_axis_candidates"],
+            stats["arbitrary_axis_pairs"],
+            stats["arbitrary_axis_selected"],
+            stats["arbitrary_axis_selected_pairs"],
+            stats["arbitrary_axis_greedy_rounds"],
+            float(stats["arbitrary_axis_weighted_score"]),
+            stats["arbitrary_axis_skipped_by_competition"],
+            stats["arbitrary_axes_disabled"],
             stats["skipped_relations"],
             stats["skipped_dimensions"],
             stats["added"],
@@ -535,5 +878,5 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join):
     return {
         "indices": exported_constraint_indices,
         "stats": stats,
-        "policy": "minimal-v6.3.3-symmetry-modes",
+        "policy": "minimal-v6.5.2-axes-before-centers",
     }
