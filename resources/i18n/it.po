@@ -320,3 +320,61 @@ msgstr "Detect arbitrary symmetry centers during Path export"
 
 msgid "Minimum number of symmetric point pairs required to accept an arbitrary symmetry"
 msgstr "Minimum number of symmetric point pairs required to accept an arbitrary symmetry"
+
+msgid "Reduce redundant constraints"
+msgstr ""
+
+msgid "Try to remove redundant exported constraints after solving, without changing the sketch degrees of freedom"
+msgstr ""
+
+msgid "Geometric overloads"
+msgstr "Geometric overloads"
+
+msgid "Preserve Tangent"
+msgstr ""
+
+
+msgid "Mark two selected Path pieces as a protected tangent overload"
+msgstr ""
+
+msgid "Edit Overloads"
+msgstr ""
+
+
+msgid "Open a closed Path as selectable pieces for overload editing"
+msgstr ""
+
+
+msgid "Finish Overload Edit"
+msgstr ""
+
+
+msgid "Close the current Path overload edit session"
+msgstr ""
+
+msgid "Constraints"
+msgstr "Constraints"
+
+
+msgid "Open Contour"
+msgstr "Open Contour"
+
+
+msgid "Close Contour"
+msgstr "Close Contour"
+
+
+msgid "Preserve Tangency"
+msgstr "Preserve Tangency"
+
+
+msgid "Preserve a tangency by selecting portions of the opened contour"
+msgstr "Preserve a tangency by selecting portions of the opened contour"
+
+
+msgid "Open a closed contour for constraint overload editing"
+msgstr "Open a closed contour for constraint overload editing"
+
+
+msgid "Close the current contour overload editing session"
+msgstr "Close the current contour overload editing session"

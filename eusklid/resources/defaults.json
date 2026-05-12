@@ -128,6 +128,16 @@
       ],
       "thickness": 6,
       "alpha": 0
+    },
+    "overload": {
+      "color": [
+        1.0,
+        0.55,
+        0.55
+      ],
+      "thickness": 8,
+      "alpha": 20,
+      "point_size": 8
     }
   },
   "feeling": {
@@ -144,6 +154,7 @@
     "axial_symmetry_x": true,
     "arbitrary_symmetry_axes": false,
     "arbitrary_symmetry_centers": false,
-    "symmetry_min_score": 4
+    "symmetry_min_score": 4,
+    "reduce_redundant_constraints": false
   }
 }

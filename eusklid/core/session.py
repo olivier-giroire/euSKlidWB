@@ -18,6 +18,11 @@ from ..runtime import reset_interaction_state as runtime_reset_interaction_state
 from ..qt_compat import QtCore
 
 try:
+    import FreeCAD as App
+except Exception:  # pragma: no cover - FreeCAD runtime only
+    App = None
+
+try:
     import FreeCADGui as Gui
 except Exception:  # pragma: no cover - FreeCAD runtime only
     Gui = None
@@ -61,6 +66,77 @@ def _is_escape_key(info):
         return False
 
 
+def _is_undo_key(info):
+    """Return True for Ctrl+Z from FreeCAD/Coin keyboard callbacks."""
+    try:
+        if str(info.get("State", "")).upper() != "DOWN":
+            return False
+    except Exception:
+        return False
+    try:
+        key = str(info.get("Key", "")).upper()
+        if key not in ("Z", "KEY_Z"):
+            return False
+    except Exception:
+        return False
+    try:
+        mods = str(info.get("CtrlDown", info.get("ControlDown", info.get("Ctrl", "")))).upper()
+        if mods in ("TRUE", "1", "YES"):
+            return True
+    except Exception:
+        pass
+    try:
+        mods = str(info.get("Modifiers", info.get("Modifier", ""))).upper()
+        return "CTRL" in mods or "CONTROL" in mods
+    except Exception:
+        return False
+
+
+def _find_existing_eusklid_sketch():
+    """Best-effort lookup used by Ctrl+Z while an euSKlid tool owns focus."""
+    if App is None:
+        return None
+    try:
+        doc = App.ActiveDocument
+    except Exception:
+        doc = None
+    if doc is None:
+        return None
+    try:
+        for obj in doc.Objects:
+            try:
+                proxy = getattr(obj, "Proxy", None)
+                if proxy is not None and proxy.__class__.__name__ == "euSKlidFeature":
+                    return obj
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return None
+
+
+def undo_contextual_in_session():
+    """Contextual undo available from the active tool keyboard handler.
+
+    FreeCAD's global Std_Undo often receives Ctrl+Z before the euSKlid command
+    accelerator.  Interactive euSKlid tools therefore need their own keyboard
+    route for transient tool state and SketchJson snapshots.
+    """
+    try:
+        if undo_active_command():
+            return True
+    except Exception:
+        pass
+    try:
+        from .undo import undo_last_sketch_edit
+        sketch_obj = _find_existing_eusklid_sketch()
+        if sketch_obj is not None:
+            return bool(undo_last_sketch_edit(sketch_obj))
+    except Exception:
+        pass
+    return False
+
+
 def _remove_escape_handler():
     global _ESC_VIEW, _ESC_CALLBACK
     if _ESC_VIEW is not None and _ESC_CALLBACK is not None:
@@ -86,6 +162,9 @@ def _install_escape_handler(context):
 
     def _on_key(info):
         try:
+            if _is_undo_key(info):
+                if undo_contextual_in_session():
+                    return
             if not _is_escape_key(info):
                 return
             try:

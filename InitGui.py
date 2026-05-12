@@ -69,6 +69,16 @@ class euSKlidWorkbench(Gui.Workbench):
             "euSKlid_PathExport",
         ])
 
+        self.appendMenu(tr("Constraints"), [
+            "euSKlid_PathEditOverloads",
+            "euSKlid_PathFinishOverloadEdit",
+            "euSKlid_PathPreserveTangent",
+            "euSKlid_PathPreserveLength",
+            "euSKlid_PathPreserveColinearity",
+            "euSKlid_PathPreserveAngle",
+            "euSKlid_PathPreserveDistance",
+        ])
+
     def Activated(self):
         pass
 

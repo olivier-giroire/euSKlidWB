@@ -18,12 +18,17 @@ from .plane import SketchPlane
 from .geom import LineEntity2D, CircleEntity2D
 
 class SketchData:
-    def __init__(self, plane=None, entities=None):
+    def __init__(self, plane=None, entities=None, paths=None):
         self.plane = plane or SketchPlane.XY()
         self.entities = entities or []
+        self.paths = paths or []
 
     def to_dict(self):
-        return {"plane":self.plane.to_dict(),"entities":[e.to_dict() for e in self.entities]}
+        return {
+            "plane": self.plane.to_dict(),
+            "entities": [e.to_dict() for e in self.entities],
+            "paths": list(self.paths),
+        }
 
     @classmethod
     def from_dict(cls,d):
@@ -33,7 +38,10 @@ class SketchData:
                 ents.append(LineEntity2D.from_dict(item))
             elif item.get("kind")=="circle":
                 ents.append(CircleEntity2D.from_dict(item))
-        return cls(plane=SketchPlane.XY(), entities=ents)
+        paths = d.get("paths", [])
+        if not isinstance(paths, list):
+            paths = []
+        return cls(plane=SketchPlane.XY(), entities=ents, paths=paths)
 
 def load_data(text):
     if not text:

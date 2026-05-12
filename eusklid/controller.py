@@ -31,6 +31,13 @@ from .tools.path_tools import (
     stop_path_session,
     undo_path_session,
     has_active_path_session,
+    mark_selected_path_tangent_overload,
+    mark_selected_path_length_overload,
+    mark_selected_path_colinearity_overload,
+    mark_selected_path_angle_overload,
+    mark_selected_path_distance_overload,
+    start_path_overload_edit,
+    finish_path_overload_edit,
 )
 from .core.session import undo_active_command, has_active_command, reset_interaction_state
 from .core.undo import undo_last_sketch_edit
@@ -161,6 +168,11 @@ def open_eusklid_sketch():
         except Exception:
             pass
 
+    try:
+        from .tools.path_tools import restore_closed_paths_from_sketch
+        restore_closed_paths_from_sketch(obj, redraw_missing=False)
+    except Exception:
+        pass
 
     try:
         if Gui.ActiveDocument is not None:
@@ -434,4 +446,45 @@ def start_line_grid_session(grid_params=None, ask_grid_parameters=None, construc
     stop_active_session()
     sketch_obj = get_or_create_euclid_sketch()
     return tools_start_line_grid(sketch_obj=sketch_obj, grid_params=grid_params, ask_grid_parameters=ask_grid_parameters, construction=construction)
+
+
+# Constraint overload command wrappers.
+def path_preserve_tangent_overload():
+    return mark_selected_path_tangent_overload()
+
+def path_preserve_tangent():
+    return mark_selected_path_tangent_overload()
+
+def path_preserve_length_overload():
+    return mark_selected_path_length_overload()
+
+def path_preserve_length():
+    return mark_selected_path_length_overload()
+
+def path_preserve_colinearity_overload():
+    return mark_selected_path_colinearity_overload()
+
+def path_preserve_colinearity():
+    return mark_selected_path_colinearity_overload()
+
+def path_preserve_angle_overload():
+    return mark_selected_path_angle_overload()
+
+def path_preserve_angle():
+    return mark_selected_path_angle_overload()
+
+def path_preserve_distance_overload():
+    return mark_selected_path_distance_overload()
+
+def path_preserve_distance():
+    return mark_selected_path_distance_overload()
+
+def path_start_overload_edit():
+    return start_path_overload_edit()
+
+def path_finish_overload_edit():
+    return finish_path_overload_edit()
+
+def path_edit_overloads():
+    return start_path_overload_edit()
 

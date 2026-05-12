@@ -279,6 +279,11 @@ class SelectionDeleteHandler:
         if self.sketch_obj is None or not self.selected_indices:
             return
         try:
+            try:
+                from ..core.undo import push_sketch_undo
+                push_sketch_undo(self.sketch_obj)
+            except Exception:
+                pass
             data = feature_get_data(self.sketch_obj)
             kept = [
                 ent for i, ent in enumerate(data.entities)

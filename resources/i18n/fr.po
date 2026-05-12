@@ -314,3 +314,61 @@ msgstr "Détecter les centres de symétrie quelconques lors de l’export du con
 
 msgid "Minimum number of symmetric point pairs required to accept an arbitrary symmetry"
 msgstr "Nombre minimal de paires de points symétriques requis pour accepter une symétrie quelconque"
+
+msgid "Reduce redundant constraints"
+msgstr "Réduire les contraintes redondantes"
+
+msgid "Try to remove redundant exported constraints after solving, without changing the sketch degrees of freedom"
+msgstr "Essayer de supprimer les contraintes exportées redondantes après résolution, sans changer les degrés de liberté du sketch"
+
+msgid "Geometric overloads"
+msgstr "Surcharges géométriques"
+
+msgid "Preserve Tangent"
+msgstr "Préserver tangence"
+
+
+msgid "Mark two selected Path pieces as a protected tangent overload"
+msgstr "Marquer deux portions de Path sélectionnées comme surcharge de tangence protégée"
+
+msgid "Edit Overloads"
+msgstr "Éditer les surcharges"
+
+
+msgid "Open a closed Path as selectable pieces for overload editing"
+msgstr "Ouvrir un Path fermé en portions sélectionnables pour éditer les surcharges"
+
+
+msgid "Finish Overload Edit"
+msgstr "Terminer édition des surcharges"
+
+
+msgid "Close the current Path overload edit session"
+msgstr "Fermer la session d’édition des surcharges du Path courant"
+
+msgid "Constraints"
+msgstr "Contraintes"
+
+
+msgid "Open Contour"
+msgstr "Ouvrir un contour"
+
+
+msgid "Close Contour"
+msgstr "Refermer le contour"
+
+
+msgid "Preserve Tangency"
+msgstr "Préserver tangence"
+
+
+msgid "Preserve a tangency by selecting portions of the opened contour"
+msgstr "Préserver une tangence en sélectionnant des portions du contour ouvert"
+
+
+msgid "Open a closed contour for constraint overload editing"
+msgstr "Ouvrir un contour fermé pour l’édition des surcharges de contraintes"
+
+
+msgid "Close the current contour overload editing session"
+msgstr "Refermer la session d’édition des surcharges du contour"

@@ -84,6 +84,24 @@ def get_path_group(doc=None):
     return doc.getObject(PATH_NAME)
 
 
+def ensure_path_instance_group(doc=None, path_id=None, label=None):
+    """Return/create the per-closed-path group under the global Path group.
+
+    The top-level Path group remains the container for all saved contours, while
+    every closed path gets its own child group so it can be shown/hidden as a
+    unit in the FreeCAD tree.
+    """
+    doc = doc or App.ActiveDocument
+    if doc is None:
+        return None
+    ensure_euclid_groups(doc)
+    parent = get_path_group(doc)
+    safe_id = str(path_id or label or "Path")
+    safe_id = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in safe_id)
+    name = "euSKlidPath_%s" % safe_id
+    return _get_or_create_group(doc, name, label or safe_id, parent)
+
+
 def add_to_group(obj, group):
     if obj is None or group is None:
         return obj

@@ -110,6 +110,9 @@ def _hard_fallback():
                 "color": [0.0, 0.45, 0.0],
                 "thickness": 6,
                 "alpha": 0
+            },
+            "overload": {
+                "color": [1.0, 0.55, 0.55]
             }
         },
         "export": {
@@ -118,7 +121,8 @@ def _hard_fallback():
             "central_symmetry": False,
             "arbitrary_symmetry_axes": False,
             "arbitrary_symmetry_centers": False,
-            "symmetry_min_score": 4
+            "symmetry_min_score": 4,
+            "reduce_redundant_constraints": False
         },
         "feeling": {
             "snap_threshold": 20,
@@ -214,3 +218,28 @@ def set_config(cfg):
     _CURRENT = copy.deepcopy(cfg)
 
 
+
+
+def get_overload_color():
+    try:
+        return tuple(get_config().get("path", {}).get("overload", {}).get("color", (1.0, 0.55, 0.55)))
+    except Exception:
+        return (1.0, 0.55, 0.55)
+
+
+def get_overload_style():
+    try:
+        ov = get_config().get("path", {}).get("overload", {}) or {}
+        return {
+            "color": tuple(ov.get("color", (1.0, 0.55, 0.55))),
+            "thickness": float(ov.get("thickness", 8.0)),
+            "alpha": int(ov.get("alpha", 20)),
+            "point_size": float(ov.get("point_size", 8.0)),
+        }
+    except Exception:
+        return {
+            "color": (1.0, 0.55, 0.55),
+            "thickness": 8.0,
+            "alpha": 20,
+            "point_size": 8.0,
+        }

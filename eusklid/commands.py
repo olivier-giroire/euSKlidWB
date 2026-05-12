@@ -18,8 +18,15 @@ from .controller import (
     path_start,
     path_close,
     path_export,
+    path_preserve_tangent_overload,
+    path_start_overload_edit,
+    path_finish_overload_edit,
     end_sketch,
     undo_contextual,
+    path_preserve_length_overload,
+    path_preserve_colinearity_overload,
+    path_preserve_angle_overload,
+    path_preserve_distance_overload,
 )
 from .qt_compat import QtWidgets
 from .core.i18n import tr
@@ -69,7 +76,7 @@ class CmdPointAngle(_BaseCmd):
     def GetResources(self):
         return {
             "MenuText": tr("Series Ref, Pt, Angle"),
-            "ToolTip": tr("Create a series of lines through a point, at angles measured from a reference."),
+            "ToolTip": tr("Create a series of lines through a point, at angles measured from a reference.")
         }
 
     def Activated(self):
@@ -117,6 +124,57 @@ class CmdPathExport(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("Export Path to Sketcher"),"ToolTip":tr("Export the current path to Sketcher")}
     def Activated(self): path_export()
 
+class CmdPathPreserveTangent(_BaseCmd):
+    def GetResources(self): return {"MenuText":tr("Preserve Tangency"),"ToolTip":tr("Preserve a tangency by selecting portions of the opened contour")}
+    def Activated(self): path_preserve_tangent_overload()
+
+class CmdPathPreserveLength(_BaseCmd):
+    def Activated(self): path_preserve_length_overload()
+    def GetResources(self):
+        return {
+            "MenuText": tr("Preserve Length"),
+            "ToolTip": tr("Preserve a user-selected length overload on the opened contour")
+        }
+
+
+
+class CmdPathPreserveColinearity(_BaseCmd):
+    def Activated(self): path_preserve_colinearity_overload()
+    def GetResources(self):
+        return {
+            "MenuText": tr("Preserve Colinearity"),
+            "ToolTip": tr("Preserve a colinearity relation between two straight contour segments")
+        }
+
+
+
+class CmdPathPreserveAngle(_BaseCmd):
+    def Activated(self): path_preserve_angle_overload()
+    def GetResources(self):
+        return {
+            "MenuText": tr("Preserve Angle"),
+            "ToolTip": tr("Preserve an angle relation between two straight contour segments")
+        }
+
+
+
+class CmdPathPreserveDistance(_BaseCmd):
+    def Activated(self): path_preserve_distance_overload()
+    def GetResources(self):
+        return {
+            "MenuText": tr("Preserve Distance"),
+            "ToolTip": tr("Preserve a distance relation between two clicked contour references")
+        }
+
+
+class CmdPathEditOverloads(_BaseCmd):
+    def GetResources(self): return {"MenuText":tr("Open Contour"),"ToolTip":tr("Open a closed contour for constraint overload editing")}
+    def Activated(self): path_start_overload_edit()
+
+class CmdPathFinishOverloadEdit(_BaseCmd):
+    def GetResources(self): return {"MenuText":tr("Close Contour"),"ToolTip":tr("Close the current contour overload editing session")}
+    def Activated(self): path_finish_overload_edit()
+
 class CmdUndo(_BaseCmd):
     def GetResources(self):
         return {"MenuText":"Undo","ToolTip":"Contextual undo for euSKlid","Accel":"Ctrl+Z"}
@@ -152,6 +210,13 @@ def register_commands():
     Gui.addCommand("euSKlid_PathStart", CmdPathStart())
     Gui.addCommand("euSKlid_PathClose", CmdPathClose())
     Gui.addCommand("euSKlid_PathExport", CmdPathExport())
+    Gui.addCommand("euSKlid_PathPreserveTangent", CmdPathPreserveTangent())
+    Gui.addCommand("euSKlid_PathPreserveLength", CmdPathPreserveLength())
+    Gui.addCommand("euSKlid_PathPreserveColinearity", CmdPathPreserveColinearity())
+    Gui.addCommand("euSKlid_PathPreserveAngle", CmdPathPreserveAngle())
+    Gui.addCommand("euSKlid_PathPreserveDistance", CmdPathPreserveDistance())
+    Gui.addCommand("euSKlid_PathEditOverloads", CmdPathEditOverloads())
+    Gui.addCommand("euSKlid_PathFinishOverloadEdit", CmdPathFinishOverloadEdit())
     Gui.addCommand("euSKlid_Undo", CmdUndo())
     Gui.addCommand("euSKlid_EndSketch", CmdEndSketch())
     Gui.addCommand("euSKlid_Settings", CmdSettings())

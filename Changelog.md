@@ -1,3 +1,17 @@
+
+# euSKlidWB v1.3.0
+
+## 🚀 Symmetries centric release
+- intelligent Sketcher constraint export
+- axial and central symmetry detection
+- arbitrary symmetry axes and centers
+- configurable Export settings tab
+- reduced over-constraint during Path export
+
+This release introduces a major cleanup of the codebase along with significant improvements to user experience, tool behavior, and workflow consistency.
+
+
+
 # euSKlidWB v1.2.0
 
 ## 🚀 Major update – UX, stability and codebase cleanup

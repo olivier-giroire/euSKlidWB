@@ -228,6 +228,7 @@ class SettingsDialog(QtGui.QDialog):
         self._style_row(f, "Current path", "p_cur", "p_cur_thick", "p_cur_alpha", 5, 0)
         self._style_row(f, "Candidate path", "p_cand", "p_cand_thick", "p_cand_alpha", 3, 0)
         self._style_row(f, "Closed path", "p_closed", "p_closed_thick", "p_closed_alpha", 6, 0)
+        self._style_row(f, "Geometric overloads", "p_overload", "p_overload_thick", "p_overload_alpha", 8, 20)
 
         v.addWidget(g_construction)
         v.addWidget(g_path)
@@ -259,12 +260,16 @@ class SettingsDialog(QtGui.QDialog):
         self.export_symmetry_min_score = make_spin(3, 99, 4)
         self.export_symmetry_min_score.setToolTip(tr("Minimum number of symmetric point pairs required to accept an arbitrary symmetry"))
 
+        self.export_reduce_redundant_constraints = QtGui.QCheckBox()
+        self.export_reduce_redundant_constraints.setToolTip(tr("Try to remove redundant exported constraints after solving, without changing the sketch degrees of freedom"))
+
         f.addRow(tr("Axial symmetry Y export"), self.export_axial_symmetry_y)
         f.addRow(tr("Axial symmetry X export"), self.export_axial_symmetry_x)
         f.addRow(tr("Central symmetry export"), self.export_central_symmetry)
         f.addRow(tr("Detect arbitrary symmetry axes"), self.export_arbitrary_symmetry_axes)
         f.addRow(tr("Detect arbitrary symmetry centers"), self.export_arbitrary_symmetry_centers)
         f.addRow(tr("Minimum symmetry score"), self.export_symmetry_min_score)
+        f.addRow(tr("Reduce redundant constraints"), self.export_reduce_redundant_constraints)
 
         v.addWidget(g_sym)
         v.addStretch()
@@ -380,6 +385,12 @@ class SettingsDialog(QtGui.QDialog):
                     "color": get_color(self.p_closed),
                     "thickness": self.p_closed_thick.value(),
                     "alpha": self.p_closed_alpha.value()
+                },
+                "overload": {
+                    "color": get_color(self.p_overload),
+                    "thickness": self.p_overload_thick.value(),
+                    "alpha": self.p_overload_alpha.value(),
+                    "point_size": max(1, int(self.p_overload_thick.value()))
                 }
             },
             "export": {
@@ -388,7 +399,8 @@ class SettingsDialog(QtGui.QDialog):
                 "central_symmetry": self.export_central_symmetry.isChecked(),
                 "arbitrary_symmetry_axes": self.export_arbitrary_symmetry_axes.isChecked(),
                 "arbitrary_symmetry_centers": self.export_arbitrary_symmetry_centers.isChecked(),
-                "symmetry_min_score": max(3, int(self.export_symmetry_min_score.value()))
+                "symmetry_min_score": max(3, int(self.export_symmetry_min_score.value())),
+                "reduce_redundant_constraints": self.export_reduce_redundant_constraints.isChecked()
             },
             "feeling": {
                 "snap_threshold": self.snap_thresh.value(),
@@ -450,6 +462,11 @@ class SettingsDialog(QtGui.QDialog):
             self.p_closed_thick.setValue(closed.get("thickness", 6))
             self.p_closed_alpha.setValue(closed.get("alpha", 0))
 
+            overload = p.get("overload", {})
+            _set_color_btn(self.p_overload, overload.get("color", (1.0, 0.55, 0.55)))
+            self.p_overload_thick.setValue(overload.get("thickness", 8))
+            self.p_overload_alpha.setValue(overload.get("alpha", 20))
+
             self.snap_thresh.setValue(cfg["feeling"].get("snap_threshold", 20))
             self.refresh_interval.setValue(cfg["feeling"].get("refresh_interval_ms", 120))
             self.function_reentrance.setChecked(bool(cfg["feeling"].get("function_reentrance", True)))
@@ -460,6 +477,7 @@ class SettingsDialog(QtGui.QDialog):
             self.export_arbitrary_symmetry_axes.setChecked(bool(export_cfg.get("arbitrary_symmetry_axes", False)))
             self.export_arbitrary_symmetry_centers.setChecked(bool(export_cfg.get("arbitrary_symmetry_centers", False)))
             self.export_symmetry_min_score.setValue(max(3, int(export_cfg.get("symmetry_min_score", 4))))
+            self.export_reduce_redundant_constraints.setChecked(bool(export_cfg.get("reduce_redundant_constraints", False)))
             self.console_messages.setChecked(bool(cfg["feeling"].get("console_messages", False)))
             self.help_messages.setChecked(bool(cfg["feeling"].get("help_messages", False)))
             idx = self.autogrid.findText(cfg["feeling"].get("autogrid", cfg["feeling"].get("autocorrect", "off")))
