@@ -1,4 +1,17 @@
 
+# euSKlidWB v1.3.1
+
+## User constraints release
+
+- added protected user-intent constraints for Path export
+- Preserve Tangent, Colinearity, Angle, Length and Distance overloads are now promoted to Sketcher constraints
+- Preserve Distance keeps point, segment-point and parallel segment distance semantics
+- Preserve Angle keeps the measured signed side of the selected angle
+- user-forced dimensions are rejected when the Sketcher solver would move exported geometry
+- protected user constraints are preserved during export constraint reduction
+- overload visuals are tagged and refreshed with the Path instance
+
+
 # euSKlidWB v1.3.0
 
 ## 🚀 Symmetries centric release

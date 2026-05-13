@@ -1,5 +1,13 @@
 # Releases
 
+## v1.3.1
+
+- Contraintes utilisateur preservees lors de l'export Path vers Sketcher.
+- Ajout des surcharges Preserve Tangent, Colinearity, Angle, Length et Distance comme intentions protegees.
+- Preserve Distance conserve la semantique point/segment et distance normale entre segments paralleles.
+- Preserve Angle conserve le cote signe de l'angle selectionne.
+- Rejet automatique d'une contrainte si le solveur deplace la geometrie exportee.
+
 ## v1.2.0
 
 - Dialogs non modaux + live preview
