@@ -15,6 +15,7 @@ import math
 
 from .detect import (
     arc_sweep_length,
+    are_collinear_segments,
     are_tangent_vectors,
     group_collinear_segments,
     group_same_circle_arcs,
@@ -187,6 +188,24 @@ def _add_collinearity_to_reference(add_constraint_safe, child, ref):
     return add_constraint_safe("Tangent", child["index"], ref["index"])
 
 
+def _add_parallel_to_reference(add_constraint_safe, child, ref):
+    """Constrain two non-collinear segment directions to stay parallel."""
+    return add_constraint_safe("Parallel", child["index"], ref["index"])
+
+
+def _tangent_vec_at_endpoint(meta, point_id):
+    """Return the local tangent vector at a Sketcher endpoint id."""
+    try:
+        pid = int(point_id)
+    except Exception:
+        pid = 0
+    if pid == 1:
+        return tangent_vec_start(meta)
+    if pid == 2:
+        return tangent_vec_end(meta)
+    return (0.0, 0.0)
+
+
 
 def _symmetry_point_key(meta, point):
     return (int(meta.get("index", 0)), int(point))
@@ -289,17 +308,15 @@ def _constraint_try_priority(constraint):
     kind = _constraint_kind(constraint)
     if "Horizontal" in kind or "Vertical" in kind:
         return 10
-    if "Parallel" in kind or "Perpendicular" in kind:
-        return 20
-    if "Equal" in kind:
-        return 30
-    if "Tangent" in kind:
-        return 40
     if "Symmetric" in kind:
-        # v1.3.4: symmetries are now eligible for solver-based desaturation.
-        # They are tested after local relations, and only removed if FreeCAD's
-        # solver reports the exact same DOF after deletion. Anchors, topology,
-        # and dimensions remain protected below.
+        # Symmetry is a useful global compression, but it must yield before
+        # primitive construction intent such as tangency and parallelism.
+        return 20
+    if "Parallel" in kind or "Perpendicular" in kind:
+        return 30
+    if "Equal" in kind:
+        return 40
+    if "Tangent" in kind:
         return 50
     # Never desaturate anchors/topology/dimensions in safe mode.
     if any(name in kind for name in ("Coincident", "PointOnObject", "Lock", "Distance", "Radius", "Angle")):
@@ -327,6 +344,22 @@ def _constraint_aggressive_priority(constraint):
     if "Equal" in kind:
         return 40
     return None
+
+
+def _coincident_constraint_refs(constraint):
+    """Return ((geo_a, point_a), (geo_b, point_b)) for a Coincident constraint."""
+    try:
+        if "Coincident" not in _constraint_kind(constraint):
+            return None
+        first = int(getattr(constraint, "First"))
+        first_pos = int(getattr(constraint, "FirstPos"))
+        second = int(getattr(constraint, "Second"))
+        second_pos = int(getattr(constraint, "SecondPos"))
+        if first < 0 or second < 0 or first_pos <= 0 or second_pos <= 0:
+            return None
+        return ((first, first_pos), (second, second_pos))
+    except Exception:
+        return None
 
 
 def _solve_result_is_nonfatal(result):
@@ -384,6 +417,64 @@ def _vector_tuple(value):
         return (float(value[0]), float(value[1]), float(value[2] if len(value) > 2 else 0.0))
     except Exception:
         return None
+
+
+def _sketch_point_position(sk, geo_id, point_id):
+    try:
+        point = sk.getPoint(int(geo_id), int(point_id))
+        pos = _vector_tuple(point)
+        if pos is not None:
+            return pos
+    except Exception:
+        pass
+
+    try:
+        geom = list(sk.Geometry)[int(geo_id)]
+    except Exception:
+        return None
+
+    attr = None
+    try:
+        pid = int(point_id)
+    except Exception:
+        return None
+    if pid == 1:
+        attr = "StartPoint"
+    elif pid == 2:
+        attr = "EndPoint"
+    elif pid == 3:
+        attr = "Center"
+
+    if attr is not None:
+        try:
+            pos = _vector_tuple(getattr(geom, attr))
+            if pos is not None:
+                return pos
+        except Exception:
+            pass
+
+    try:
+        pos = _vector_tuple(getattr(geom, "Location"))
+        if pos is not None:
+            return pos
+    except Exception:
+        pass
+    return None
+
+
+def _sketch_points_coincident(sk, ref_a, ref_b, tol=1e-6):
+    try:
+        pa = _sketch_point_position(sk, ref_a[0], ref_a[1])
+        pb = _sketch_point_position(sk, ref_b[0], ref_b[1])
+        if pa is None or pb is None:
+            return False
+        return (
+            abs(float(pa[0]) - float(pb[0])) <= float(tol)
+            and abs(float(pa[1]) - float(pb[1])) <= float(tol)
+            and abs(float(pa[2]) - float(pb[2])) <= float(tol)
+        )
+    except Exception:
+        return False
 
 
 def _geometry_numeric_signature(geom):
@@ -639,6 +730,142 @@ def _get_solver_dof(sk, solve_result=None):
     return None
 
 
+def _meta_point_refs_for_rigid_anchor(sk, geom_meta):
+    refs = []
+    for meta in geom_meta or []:
+        try:
+            idx = int(meta.get("index"))
+        except Exception:
+            continue
+        for point_id in (1, 2, 3):
+            pos = _sketch_point_position(sk, idx, point_id)
+            if pos is None:
+                continue
+            duplicate = False
+            for _ref, old_pos in refs:
+                if (
+                    abs(float(pos[0]) - float(old_pos[0])) <= 1e-7
+                    and abs(float(pos[1]) - float(old_pos[1])) <= 1e-7
+                    and abs(float(pos[2]) - float(old_pos[2])) <= 1e-7
+                ):
+                    duplicate = True
+                    break
+            if not duplicate:
+                refs.append(((idx, int(point_id)), pos))
+    return refs
+
+
+def _try_add_temp_constraint(sk, Sketcher, args, added):
+    try:
+        before = _constraint_count(sk)
+        sk.addConstraint(Sketcher.Constraint(*args))
+        after = _constraint_count(sk)
+        for ci in range(int(before), int(after)):
+            added.append(int(ci))
+        return after > before
+    except Exception:
+        return False
+
+
+def _remove_temp_constraints(sk, before_count):
+    try:
+        for ci in range(_constraint_count(sk) - 1, int(before_count) - 1, -1):
+            _delete_constraint_safe(sk, ci)
+    except Exception:
+        pass
+
+
+def _diagnose_shape_constraint_state(sk, Sketcher, geom_meta):
+    """Classify remaining DOF as shape-internal or placement-only.
+
+    The export intentionally avoids absolute placement constraints.  To tell
+    whether remaining DOF are only global translation/rotation, temporarily
+    anchor two existing points at their current coordinates, solve, then remove
+    those temporary constraints and restore geometry.
+    """
+    out = {
+        "dof": None,
+        "anchored_dof": None,
+        "position_only": False,
+        "status": "unknown",
+    }
+    before_count = _constraint_count(sk)
+    before_geometry = _geometry_snapshot(sk)
+    added = []
+
+    try:
+        base_result = _solve_sketch_for_desaturation(sk)
+        if isinstance(base_result, Exception):
+            out["status"] = "solve-failed"
+            return out
+        base_dof = _get_solver_dof(sk, base_result)
+        out["dof"] = base_dof
+        if base_dof is None:
+            out["status"] = "no-dof"
+            return out
+        if int(base_dof) <= 0:
+            out["anchored_dof"] = int(base_dof)
+            out["status"] = "fully-constrained"
+            return out
+
+        refs = _meta_point_refs_for_rigid_anchor(sk, geom_meta)
+        if len(refs) < 2:
+            out["status"] = "not-enough-points"
+            return out
+
+        ref0, pos0 = refs[0]
+        ref1 = pos1 = None
+        for candidate_ref, candidate_pos in refs[1:]:
+            dx = float(candidate_pos[0]) - float(pos0[0])
+            dy = float(candidate_pos[1]) - float(pos0[1])
+            if (dx * dx + dy * dy) > 1e-10:
+                ref1, pos1 = candidate_ref, candidate_pos
+                break
+        if ref1 is None:
+            out["status"] = "degenerate-points"
+            return out
+
+        _try_add_temp_constraint(sk, Sketcher, ("DistanceX", ref0[0], ref0[1], float(pos0[0])), added)
+        _try_add_temp_constraint(sk, Sketcher, ("DistanceY", ref0[0], ref0[1], float(pos0[1])), added)
+
+        dx = abs(float(pos1[0]) - float(pos0[0]))
+        dy = abs(float(pos1[1]) - float(pos0[1]))
+        if dx >= dy:
+            _try_add_temp_constraint(sk, Sketcher, ("DistanceY", ref1[0], ref1[1], float(pos1[1])), added)
+        else:
+            _try_add_temp_constraint(sk, Sketcher, ("DistanceX", ref1[0], ref1[1], float(pos1[0])), added)
+
+        if len(added) < 3:
+            out["status"] = "anchor-failed"
+            return out
+
+        anchored_result = _solve_sketch_for_desaturation(sk)
+        if isinstance(anchored_result, Exception):
+            out["status"] = "anchor-solve-failed"
+            return out
+        anchored_dof = _get_solver_dof(sk, anchored_result)
+        out["anchored_dof"] = anchored_dof
+        if anchored_dof is None:
+            out["status"] = "anchor-no-dof"
+            return out
+
+        if int(base_dof) <= 3 and int(anchored_dof) == 0:
+            out["position_only"] = True
+            out["status"] = "shape-constrained-placement-free"
+        elif int(anchored_dof) == 0:
+            out["status"] = "anchored-constrained-with-extra-dof"
+        else:
+            out["status"] = "shape-underconstrained"
+        return out
+    finally:
+        _remove_temp_constraints(sk, before_count)
+        _restore_geometry_snapshot(sk, before_geometry)
+        try:
+            _solve_sketch_for_desaturation(sk)
+        except Exception:
+            pass
+
+
 def _find_constraint_index(sk, obj, obj_repr):
     try:
         constraints = list(sk.Constraints)
@@ -710,6 +937,9 @@ def _desaturate_export_constraints(sk, stats, exported_constraint_indices, prote
     stats["desaturation_solver_removed"] = 0
     stats["desaturation_aggressive_tried"] = 0
     stats["desaturation_aggressive_removed"] = 0
+    stats["desaturation_induced_coincident_tried"] = 0
+    stats["desaturation_induced_coincident_removed"] = 0
+    stats["desaturation_induced_coincident_kept"] = 0
 
     if not _desaturation_enabled():
         return []
@@ -984,7 +1214,95 @@ def _desaturate_export_constraints(sk, stats, exported_constraint_indices, prote
         if removed_in_aggressive_pass == 0:
             break
 
-    _log("Desaturation v1.3.8 capped-arbitrary-center-pairs: tried=%d removed=%d" % (stats["desaturation_aggressive_tried"], stats["desaturation_aggressive_removed"]))
+    # Final conservative topology pass.  A Coincident may be removed only when
+    # it is proven induced by stronger remaining constraints: DOF must stay
+    # stable, the solve must not move geometry, and the two referenced points
+    # must still coincide.
+    induced_passes = 0
+    max_induced_passes = 4
+    while induced_passes < max_induced_passes:
+        induced_passes += 1
+        try:
+            constraints = list(sk.Constraints)
+        except Exception:
+            stats["desaturation_no_dof"] = 1
+            break
+
+        candidates = []
+        for current_index, obj in enumerate(constraints):
+            if int(current_index) not in exported_constraint_index_set:
+                continue
+            if int(current_index) in protected_constraint_indices:
+                continue
+            refs = _coincident_constraint_refs(obj)
+            if refs is None:
+                continue
+            try:
+                obj_repr = repr(obj)
+            except Exception:
+                obj_repr = str(obj)
+            candidates.append((-int(current_index), int(current_index), obj, obj_repr, refs))
+
+        candidates.sort()
+        removed_in_induced_pass = 0
+        for _neg_index, original_index, obj, obj_repr, refs in candidates:
+            current_index = _find_constraint_index(sk, obj, obj_repr)
+            if current_index is None:
+                stats["desaturation_skipped"] += 1
+                continue
+            if int(current_index) in protected_constraint_indices:
+                stats["desaturation_skipped"] += 1
+                continue
+
+            before_geometry = _geometry_snapshot(sk)
+            stats["desaturation_induced_coincident_tried"] += 1
+            was_exported = int(current_index) in exported_constraint_index_set
+            was_protected = int(current_index) in protected_constraint_indices
+            if not _delete_constraint_safe(sk, current_index):
+                stats["desaturation_induced_coincident_kept"] += 1
+                continue
+            _shift_tracked_indices_after_delete(current_index, remove_deleted=True)
+
+            result = _solve_sketch_for_desaturation(sk)
+            dof = None if isinstance(result, Exception) else _get_solver_dof(sk, result)
+            drift = _geometry_snapshot_drift(before_geometry, _geometry_snapshot(sk))
+            still_coincident = _sketch_points_coincident(sk, refs[0], refs[1], tol=1e-6)
+            if not isinstance(result, Exception) and dof == base_dof and drift == 0.0 and still_coincident:
+                stats["desaturation_removed"] += 1
+                stats["desaturation_induced_coincident_removed"] += 1
+                removed_in_induced_pass += 1
+                removed.append({
+                    "index": int(original_index),
+                    "kind": "Coincident",
+                    "pass": int(induced_passes),
+                    "source": "induced-topology",
+                })
+                _log("Desaturation removed induced Coincident: pass=%d original_index=%d" % (induced_passes, original_index))
+                continue
+
+            try:
+                _restore_geometry_snapshot(sk, before_geometry)
+                sk.addConstraint(obj)
+                _record_restored_constraint(was_exported, was_protected)
+                _solve_sketch_for_desaturation(sk)
+            except Exception as exc:
+                _log("Desaturation induced Coincident restore failed for original_index=%d: %s" % (original_index, exc))
+            stats["desaturation_induced_coincident_kept"] += 1
+
+        _log("Desaturation induced Coincident pass %d: removed=%d" % (induced_passes, removed_in_induced_pass))
+        if removed_in_induced_pass == 0:
+            break
+
+    _log(
+        "Desaturation v1.3.8 capped-arbitrary-center-pairs: aggressive_tried=%d aggressive_removed=%d induced_coincident_tried=%d induced_coincident_removed=%d induced_coincident_kept=%d"
+        % (
+            stats["desaturation_aggressive_tried"],
+            stats["desaturation_aggressive_removed"],
+            stats["desaturation_induced_coincident_tried"],
+            stats["desaturation_induced_coincident_removed"],
+            stats["desaturation_induced_coincident_kept"],
+        )
+    )
 
     _log(
         "Desaturation v1.3.7 solver-guided-multipass: enabled=%d dof=%s reported=%d solver_removed=%d tried=%d removed=%d kept=%d skipped=%d passes=%d"
@@ -1372,6 +1690,64 @@ def _compute_global_direction_profile(segments, angle_tol_rad=None):
         "horizontal_count": h_count,
         "vertical_count": v_count,
     }
+
+
+def _parallel_direction_groups(segments, angle_tol_rad=None):
+    """Group significant segment directions, regardless of support line."""
+    try:
+        if angle_tol_rad is None:
+            angle_tol_rad = math.radians(2.0)
+    except Exception:
+        angle_tol_rad = 0.035
+
+    groups = []
+    for meta in segments:
+        try:
+            dx, dy = segment_dir(meta)
+            length = float(segment_length(meta))
+            if length <= 1e-9:
+                continue
+            angle = _undirected_angle(dx, dy)
+        except Exception:
+            continue
+
+        placed = False
+        for group in groups:
+            if _angle_distance_pi(angle, group["angle"]) <= float(angle_tol_rad):
+                old_weight = group["weight"]
+                new_weight = old_weight + length
+                group["angle"] = (group["angle"] * old_weight + angle * length) / new_weight
+                group["weight"] = new_weight
+                group["items"].append(meta)
+                placed = True
+                break
+        if not placed:
+            groups.append({"angle": angle, "weight": length, "items": [meta]})
+
+    return [group["items"] for group in groups if len(group["items"]) >= 2]
+
+
+def _source_mode(meta):
+    try:
+        return str((meta.get("source_meta") or {}).get("mode") or "")
+    except Exception:
+        return ""
+
+
+def _strong_parallel_candidate(meta, max_length):
+    try:
+        mode = _source_mode(meta)
+        if mode in {
+            "parallel-ref-series",
+            "point-angle-series",
+            "line-2anchors-tangent",
+            "parallel-tg-circle",
+        }:
+            return True
+        length = float(segment_length(meta))
+        return length >= max(1e-9, 0.35 * float(max_length))
+    except Exception:
+        return False
 
 
 def _axis_direction_globally_relevant(profile, axis):
@@ -1907,13 +2283,28 @@ def _angle_value_between_meta(a, b):
                         if la > 1e-9 and lb > 1e-9:
                             dot = max(-1.0, min(1.0, (av[0] * bv[0] + av[1] * bv[1]) / (la * lb)))
                             cross = max(-1.0, min(1.0, (av[0] * bv[1] - av[1] * bv[0]) / (la * lb)))
-                            return float(math.atan2(cross, dot))
+                            return _normalize_unsigned_angle_value(math.atan2(cross, dot))
 
         ax, ay = segment_dir(a)
         bx, by = segment_dir(b)
-        dot = max(-1.0, min(1.0, float(ax) * float(bx) + float(ay) * float(by)))
-        cross = max(-1.0, min(1.0, float(ax) * float(by) - float(ay) * float(bx)))
-        return float(math.atan2(cross, dot))
+        dot = float(ax) * float(bx) + float(ay) * float(by)
+        cross = float(ax) * float(by) - float(ay) * float(bx)
+        return _normalize_unsigned_angle_value(math.atan2(cross, dot))
+    except Exception:
+        return None
+
+
+def _normalize_unsigned_angle_value(value):
+    try:
+        value = float(value)
+        if abs(value) > math.pi * 2.0:
+            value = math.radians(value)
+        value = abs(value) % (math.pi * 2.0)
+        if value > math.pi:
+            value = math.pi * 2.0 - value
+        if value <= 1e-9:
+            return None
+        return float(value)
     except Exception:
         return None
 
@@ -1921,27 +2312,18 @@ def _angle_value_between_meta(a, b):
 def _stored_angle_value(intent):
     try:
         rng = intent.get("range") or {}
-        value = rng.get("value")
+        value = rng.get("abs_value")
+        if value is None:
+            value = rng.get("value")
         if value is None:
             value = (intent.get("raw") or {}).get("value")
         if value is None:
             return None
-        value = float(value)
-        if value > 0.0 and "abs_value" not in rng:
+        if float(value) > 0.0 and "abs_value" not in rng:
             # Legacy angle overloads stored only the unsigned magnitude.  Let
-            # the geometry fallback recover the signed side from piece order.
+            # the geometry fallback recover a value from the selected pieces.
             return None
-        if abs(value) <= 1e-9:
-            return None
-        if abs(value) > math.pi * 2.0:
-            value = math.radians(value)
-        while value > math.pi:
-            value -= math.pi * 2.0
-        while value <= -math.pi:
-            value += math.pi * 2.0
-        if abs(value) <= 1e-9:
-            return None
-        return float(value)
+        return _normalize_unsigned_angle_value(value)
     except Exception:
         return None
 
@@ -1975,10 +2357,15 @@ def _add_user_angle_dimension(add_protected_constraint_safe, stats, piece_map, i
         stats["user_forced_skipped"] += 1
         stats["skipped_dimensions"] += 1
         return False
+    value = _normalize_unsigned_angle_value(value)
+    if value is None:
+        stats["user_forced_skipped"] += 1
+        stats["skipped_dimensions"] += 1
+        return False
 
     candidates = [
         ("Angle", a["index"], b["index"], float(value)),
-        ("Angle", b["index"], a["index"], -float(value)),
+        ("Angle", b["index"], a["index"], float(value)),
     ]
 
     # Endpoint-explicit fallbacks.  Some Sketcher versions require endpoints
@@ -1986,7 +2373,7 @@ def _add_user_angle_dimension(add_protected_constraint_safe, stats, piece_map, i
     for pa in (1, 2):
         for pb in (1, 2):
             candidates.append(("Angle", a["index"], pa, b["index"], pb, float(value)))
-            candidates.append(("Angle", b["index"], pb, a["index"], pa, -float(value)))
+            candidates.append(("Angle", b["index"], pb, a["index"], pa, float(value)))
 
     if _try_protected_dimension_candidates(add_protected_constraint_safe, candidates):
         stats["user_forced_angle"] += 1
@@ -2150,8 +2537,12 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         "symmetry_x_disabled": 0,
         "central_symmetry_disabled": 0,
         "symmetry_skipped_by_cluster": 0,
+        "symmetry_skipped_by_primitive": 0,
         "hv_skipped_by_symmetry": 0,
         "hv_skipped_by_global_direction": 0,
+        "primitive_tangencies": 0,
+        "parallel_groups": 0,
+        "parallel_links": 0,
         "global_horizontal_score": 0.0,
         "global_vertical_score": 0.0,
         "arbitrary_center_candidates": 0,
@@ -2179,6 +2570,9 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         "desaturation_solver_reported": 0,
         "desaturation_solver_removed": 0,
         "arbitrary_axes_disabled": 0,
+        "shape_dof": -1,
+        "shape_anchor_dof": -1,
+        "shape_position_only": 0,
         "user_intents": 0,
         "user_intent_conflicts": 0,
         "user_intent_warnings": 0,
@@ -2266,6 +2660,114 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
     )
 
 
+    # 2b) Primitive construction intent.  These are strong geometric relations
+    # inferred directly from the drawn primitives, not optional global cleanup:
+    # local smooth tangency and significant repeated segment directions.  Emit
+    # them before automatic symmetry so symmetry cannot consume the same points
+    # and freeze the sketch against local construction intent.
+    junctions = list(connected_junctions(geom_meta, tol_join))
+    segments = [meta for meta in geom_meta if meta.get("type") == "segment"]
+    dist_tol = max(float(tol_join) * 0.25, 1e-6)
+    # Points in this set are reserved from automatic symmetry.  Keep it narrow:
+    # tangency is a local construction intent tied to a junction point, while
+    # collinearity and parallelism are better protected by their own constraints
+    # and can still benefit from a small amount of symmetry to propagate edits.
+    primitive_relation_points = set()
+    primitive_tangent_pairs = set()
+    collinear_count = 0
+
+    def reserve_tangent_cluster_points(*refs):
+        positions = []
+        for meta, point_id in refs:
+            pos = meta.get("start") if int(point_id) == 1 else meta.get("end")
+            if pos is not None:
+                positions.append(pos)
+        for meta in geom_meta:
+            for point_id, key_name in ((1, "start"), (2, "end")):
+                pos = meta.get(key_name)
+                if pos is None:
+                    continue
+                for ref_pos in positions:
+                    try:
+                        if math.hypot(float(pos[0]) - float(ref_pos[0]), float(pos[1]) - float(ref_pos[1])) <= float(tol_join):
+                            primitive_relation_points.add(_symmetry_point_key(meta, point_id))
+                            break
+                    except Exception:
+                        pass
+
+    def try_add_primitive_tangent(cur, cur_point, nxt, nxt_point):
+        cur_type = cur.get("type")
+        nxt_type = nxt.get("type")
+        if "arc" not in {cur_type, nxt_type}:
+            return False
+        if cur_type not in {"segment", "arc"} or nxt_type not in {"segment", "arc"}:
+            return False
+        if not are_tangent_vectors(_tangent_vec_at_endpoint(cur, cur_point), _tangent_vec_at_endpoint(nxt, nxt_point)):
+            return False
+        if has_directional_user_intent(user_intents, cur, nxt):
+            return False
+        key = tuple(sorted((int(cur["index"]), int(nxt["index"]))))
+        if key in primitive_tangent_pairs:
+            reserve_tangent_cluster_points((cur, cur_point), (nxt, nxt_point))
+            return False
+        if add_protected_constraint_safe("Tangent", cur["index"], nxt["index"]):
+            primitive_tangent_pairs.add(key)
+            reserve_tangent_cluster_points((cur, cur_point), (nxt, nxt_point))
+            stats["primitive_tangencies"] += 1
+            return True
+        return False
+
+    for cur, cur_point, nxt, nxt_point in endpoint_pairs:
+        try_add_primitive_tangent(cur, cur_point, nxt, nxt_point)
+
+    for _i, cur, nxt in junctions:
+        try_add_primitive_tangent(cur, 2, nxt, 1)
+
+    groups = group_collinear_segments(segments, dist_tol=dist_tol)
+    for group in groups:
+        ref = _choose_collinear_reference(group)
+        stats["collinear_groups"] += 1
+        stats["collinear_members"] += len(group)
+
+        emitted_for_group = 0
+        for child in group:
+            if child is ref:
+                continue
+            if has_directional_user_intent(user_intents, child, ref):
+                stats["auto_skipped_by_user_intent"] += 1
+                stats["skipped_relations"] += 1
+                continue
+            if _add_collinearity_to_reference(add_protected_constraint_safe, child, ref):
+                collinear_count += 1
+                emitted_for_group += 1
+
+    for group in _parallel_direction_groups(segments):
+        try:
+            max_length = max(float(segment_length(meta)) for meta in group)
+        except Exception:
+            max_length = 0.0
+        strong = [meta for meta in group if _strong_parallel_candidate(meta, max_length)]
+        if len(strong) < 2:
+            continue
+        ref = _choose_collinear_reference(strong)
+        emitted_for_group = 0
+        for child in strong:
+            if child is ref:
+                continue
+            try:
+                if are_collinear_segments(child, ref, dist_tol=max(float(tol_join) * 0.25, 1e-6)):
+                    continue
+            except Exception:
+                pass
+            if has_directional_user_intent(user_intents, child, ref):
+                continue
+            if _add_parallel_to_reference(add_protected_constraint_safe, child, ref):
+                emitted_for_group += 1
+                stats["parallel_links"] += 1
+        if emitted_for_group:
+            stats["parallel_groups"] += 1
+
+
     # 3) Symmetry: conservative axis passes.  Work on endpoint clusters so
     # coincident duplicates do not all receive their own symmetry constraint.
     # In Sketcher, the horizontal and vertical sketch axes are addressed with
@@ -2280,6 +2782,12 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         used_symmetry_points.add(_symmetry_point_key(meta_a, point_a))
         used_symmetry_points.add(_symmetry_point_key(meta_b, point_b))
 
+    def symmetry_pair_blocked_by_primitive(meta_a, point_a, meta_b, point_b):
+        return (
+            _symmetry_point_key(meta_a, point_a) in primitive_relation_points
+            or _symmetry_point_key(meta_b, point_b) in primitive_relation_points
+        )
+
     def symmetry_pair_available(meta_a, point_a, meta_b, point_b):
         key = _symmetry_pair_key(meta_a, point_a, meta_b, point_b)
         if key in used_symmetry_pairs:
@@ -2288,13 +2796,18 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
             return False
         if _symmetry_point_key(meta_b, point_b) in used_symmetry_points:
             return False
+        if symmetry_pair_blocked_by_primitive(meta_a, point_a, meta_b, point_b):
+            return False
         return True
 
     symmetry_y_count = 0
     if _axial_symmetry_y_enabled():
         for left, left_point, right, right_point in mirrored_endpoint_pairs_y_axis(geom_meta, symmetry_tol):
             if not symmetry_pair_available(left, left_point, right, right_point):
-                stats["symmetry_skipped_by_cluster"] += 1
+                if symmetry_pair_blocked_by_primitive(left, left_point, right, right_point):
+                    stats["symmetry_skipped_by_primitive"] += 1
+                else:
+                    stats["symmetry_skipped_by_cluster"] += 1
                 stats["skipped_relations"] += 1
                 continue
             if add_constraint_safe("Symmetric", left["index"], left_point, right["index"], right_point, -2):
@@ -2308,7 +2821,10 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
     if _axial_symmetry_x_enabled():
         for top, top_point, bottom, bottom_point in mirrored_endpoint_pairs_x_axis(geom_meta, symmetry_tol):
             if not symmetry_pair_available(top, top_point, bottom, bottom_point):
-                stats["symmetry_skipped_by_cluster"] += 1
+                if symmetry_pair_blocked_by_primitive(top, top_point, bottom, bottom_point):
+                    stats["symmetry_skipped_by_primitive"] += 1
+                else:
+                    stats["symmetry_skipped_by_cluster"] += 1
                 stats["skipped_relations"] += 1
                 continue
             if add_constraint_safe("Symmetric", top["index"], top_point, bottom["index"], bottom_point, -1):
@@ -2323,7 +2839,10 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         origin_index = None
         for a, a_point, b, b_point in mirrored_endpoint_pairs_center_origin(geom_meta, symmetry_tol):
             if not symmetry_pair_available(a, a_point, b, b_point):
-                stats["symmetry_skipped_by_cluster"] += 1
+                if symmetry_pair_blocked_by_primitive(a, a_point, b, b_point):
+                    stats["symmetry_skipped_by_primitive"] += 1
+                else:
+                    stats["symmetry_skipped_by_cluster"] += 1
                 stats["skipped_relations"] += 1
                 continue
             if origin_index is None:
@@ -2418,7 +2937,10 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
             kept_weight = 0.0
             for meta_a, point_a, meta_b, point_b, relevance in useful_pairs:
                 if not symmetry_pair_available(meta_a, point_a, meta_b, point_b):
-                    stats["symmetry_skipped_by_cluster"] += 1
+                    if symmetry_pair_blocked_by_primitive(meta_a, point_a, meta_b, point_b):
+                        stats["symmetry_skipped_by_primitive"] += 1
+                    else:
+                        stats["symmetry_skipped_by_cluster"] += 1
                     stats["skipped_relations"] += 1
                     continue
                 if add_constraint_safe("Symmetric", meta_a["index"], point_a, meta_b["index"], point_b, axis_index):
@@ -2548,7 +3070,10 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
                 # Re-check availability because each emitted pair marks its
                 # endpoints.  This protects the greedy pass from stale scores.
                 if not symmetry_pair_available(meta_a, point_a, meta_b, point_b):
-                    stats["symmetry_skipped_by_cluster"] += 1
+                    if symmetry_pair_blocked_by_primitive(meta_a, point_a, meta_b, point_b):
+                        stats["symmetry_skipped_by_primitive"] += 1
+                    else:
+                        stats["symmetry_skipped_by_cluster"] += 1
                     stats["skipped_relations"] += 1
                     continue
                 if _add_central_symmetry_safe(
@@ -2579,92 +3104,13 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
     else:
         stats["arbitrary_centers_disabled"] = 1
 
-    # Keep traversal junctions separately for local smoothness decisions.
-    junctions = list(connected_junctions(geom_meta, tol_join))
-
-    # 2) Structural reduction: common support lines.  A construction line may
-    # appear as many disconnected path fragments; only its reference fragment
-    # gets the H/V direction marker.  Other fragments are attached by support
-    # collinearity instead of repeating the same direction constraint.
-    segments = [meta for meta in geom_meta if meta.get("type") == "segment"]
+    # 2) Direction profile only.  We deliberately do not emit automatic
+    # Horizontal/Vertical constraints here: absolute orientation in the sketch
+    # frame is a downstream engineering decision, not path topology.
     global_direction_profile = _compute_global_direction_profile(segments)
-    horizontal_globally_relevant = _axis_direction_globally_relevant(global_direction_profile, "horizontal")
-    vertical_globally_relevant = _axis_direction_globally_relevant(global_direction_profile, "vertical")
     stats["global_horizontal_score"] = float(_global_direction_score(global_direction_profile, "horizontal"))
     stats["global_vertical_score"] = float(_global_direction_score(global_direction_profile, "vertical"))
-    # tol_join is a geometric model tolerance; support grouping needs to be a
-    # little stricter than endpoint joining but still tolerant of exported float
-    # noise.
-    dist_tol = max(float(tol_join) * 0.25, 1e-6)
-    groups = group_collinear_segments(segments, dist_tol=dist_tol)
-    grouped_ids = set()
     hv_count = 0
-    collinear_count = 0
-    for group in groups:
-        ref = _choose_collinear_reference(group)
-        stats["collinear_groups"] += 1
-        stats["collinear_members"] += len(group)
-        for meta in group:
-            grouped_ids.add(id(meta))
-
-        dx, dy = segment_dir(ref)
-        if is_horizontal(dx, dy):
-            # Symmetry has priority over H/V: if any fragment of this support
-            # line has endpoints mirrored about Y, horizontality is already a
-            # consequence of the Symmetric constraint plus support Tangent links.
-            if _group_has_symmetry_implied_horizontal(group, max(float(tol_join), 1e-5)):
-                stats["hv_skipped_by_symmetry"] += 1
-                stats["skipped_relations"] += 1
-            elif not horizontal_globally_relevant:
-                stats["hv_skipped_by_global_direction"] += 1
-                stats["skipped_relations"] += 1
-            elif add_constraint_safe("Horizontal", ref["index"]):
-                hv_count += 1
-        elif is_vertical(dx, dy):
-            # Same for verticality: endpoint symmetry about X implies vertical.
-            if _group_has_symmetry_implied_vertical(group, max(float(tol_join), 1e-5)):
-                stats["hv_skipped_by_symmetry"] += 1
-                stats["skipped_relations"] += 1
-            elif not vertical_globally_relevant:
-                stats["hv_skipped_by_global_direction"] += 1
-                stats["skipped_relations"] += 1
-            elif add_constraint_safe("Vertical", ref["index"]):
-                hv_count += 1
-
-        for child in group:
-            if child is ref:
-                continue
-            if has_directional_user_intent(user_intents, child, ref):
-                stats["auto_skipped_by_user_intent"] += 1
-                stats["skipped_relations"] += 1
-                continue
-            if _add_collinearity_to_reference(add_constraint_safe, child, ref):
-                collinear_count += 1
-
-    # 3) Standalone H/V hints: only for segments that are not part of a detected
-    # support group.
-    for meta in segments:
-        if id(meta) in grouped_ids:
-            continue
-        dx, dy = segment_dir(meta)
-        if is_horizontal(dx, dy):
-            if _endpoint_mirrored_y(meta, max(float(tol_join), 1e-5)):
-                stats["hv_skipped_by_symmetry"] += 1
-                stats["skipped_relations"] += 1
-            elif not horizontal_globally_relevant:
-                stats["hv_skipped_by_global_direction"] += 1
-                stats["skipped_relations"] += 1
-            elif add_constraint_safe("Horizontal", meta["index"]):
-                hv_count += 1
-        elif is_vertical(dx, dy):
-            if _endpoint_mirrored_x(meta, max(float(tol_join), 1e-5)):
-                stats["hv_skipped_by_symmetry"] += 1
-                stats["skipped_relations"] += 1
-            elif not vertical_globally_relevant:
-                stats["hv_skipped_by_global_direction"] += 1
-                stats["skipped_relations"] += 1
-            elif add_constraint_safe("Vertical", meta["index"]):
-                hv_count += 1
 
     # 4) Circular support reduction: several exported arc fragments can come
     # from the same construction circle.  Attach the smaller fragments to one
@@ -2690,13 +3136,16 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
     # really share a smooth tangent.  This covers line/arc, arc/line, and
     # arc/arc transitions.  Pure segment/segment support collinearity is already
     # handled structurally above, so it is intentionally excluded here.
-    tangent_count = 0
+    tangent_count = int(stats.get("primitive_tangencies", 0))
     for _i, cur, nxt in junctions:
         cur_type = cur.get("type")
         nxt_type = nxt.get("type")
         if "arc" not in {cur_type, nxt_type}:
             continue
         if cur_type not in {"segment", "arc"} or nxt_type not in {"segment", "arc"}:
+            continue
+        key = tuple(sorted((int(cur["index"]), int(nxt["index"]))))
+        if key in primitive_tangent_pairs:
             continue
         # If two neighbouring arcs are already attached to the same circle
         # support, Coincident center + Equal radius + endpoint Coincident makes
@@ -2725,8 +3174,19 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
 
     removed_constraints = _desaturate_export_constraints(sk, stats, exported_constraint_indices, protected_constraint_indices=protected_constraint_indices)
 
+    shape_state = _diagnose_shape_constraint_state(sk, Sketcher, geom_meta)
+    try:
+        if shape_state.get("dof") is not None:
+            stats["shape_dof"] = int(shape_state.get("dof"))
+        if shape_state.get("anchored_dof") is not None:
+            stats["shape_anchor_dof"] = int(shape_state.get("anchored_dof"))
+        stats["shape_position_only"] = 1 if shape_state.get("position_only") else 0
+        stats["shape_status"] = str(shape_state.get("status", "unknown"))
+    except Exception:
+        stats["shape_status"] = "unknown"
+
     _log(
-        "Export constraints v1.3.8 capped-arbitrary-center-pairs: endpoint_coincidences=%d symmetry_y=%d symmetry_x=%d symmetry_center=%d symmetry_y_disabled=%d symmetry_x_disabled=%d central_symmetry_disabled=%d symmetry_skipped_by_cluster=%d traversal_junctions=%d hv=%d collinear_groups=%d collinear_members=%d collinear_links=%d circle_groups=%d circle_members=%d circle_links=%d tangencies=%d hv_skipped_by_symmetry=%d hv_skipped_by_global_direction=%d global_h_score=%.2f global_v_score=%.2f arbitrary_center_candidates=%d arbitrary_center_pairs=%d arbitrary_center_selected=%d arbitrary_center_selected_pairs=%d arbitrary_center_greedy_rounds=%d arbitrary_center_weighted_score=%.2f arbitrary_center_skipped_by_competition=%d arbitrary_centers_disabled=%d arbitrary_axis_candidates=%d arbitrary_axis_pairs=%d arbitrary_axis_selected=%d arbitrary_axis_selected_pairs=%d arbitrary_axis_greedy_rounds=%d arbitrary_axis_weighted_score=%.2f arbitrary_axis_skipped_by_competition=%d arbitrary_axis_skipped_by_global_structure=%d arbitrary_axes_disabled=%d user_intents=%d user_intent_conflicts=%d user_forced_tangent=%d user_forced_colinearity=%d user_forced_length=%d user_forced_distance=%d user_forced_angle=%d user_forced_skipped=%d auto_skipped_by_user_intent=%d desaturation_enabled=%d desaturation_solver_reported=%d desaturation_solver_removed=%d desaturation_tried=%d desaturation_removed=%d desaturation_kept=%d desaturation_skipped=%d desaturation_no_dof=%d skipped_relations=%d skipped_dimension_sources=%d added=%d failed=%d"
+        "Export constraints v1.3.8 capped-arbitrary-center-pairs: endpoint_coincidences=%d symmetry_y=%d symmetry_x=%d symmetry_center=%d symmetry_y_disabled=%d symmetry_x_disabled=%d central_symmetry_disabled=%d symmetry_skipped_by_cluster=%d symmetry_skipped_by_primitive=%d traversal_junctions=%d primitive_tangencies=%d parallel_groups=%d parallel_links=%d hv=%d collinear_groups=%d collinear_members=%d collinear_links=%d circle_groups=%d circle_members=%d circle_links=%d tangencies=%d hv_skipped_by_symmetry=%d hv_skipped_by_global_direction=%d global_h_score=%.2f global_v_score=%.2f arbitrary_center_candidates=%d arbitrary_center_pairs=%d arbitrary_center_selected=%d arbitrary_center_selected_pairs=%d arbitrary_center_greedy_rounds=%d arbitrary_center_weighted_score=%.2f arbitrary_center_skipped_by_competition=%d arbitrary_centers_disabled=%d arbitrary_axis_candidates=%d arbitrary_axis_pairs=%d arbitrary_axis_selected=%d arbitrary_axis_selected_pairs=%d arbitrary_axis_greedy_rounds=%d arbitrary_axis_weighted_score=%.2f arbitrary_axis_skipped_by_competition=%d arbitrary_axis_skipped_by_global_structure=%d arbitrary_axes_disabled=%d shape_dof=%d shape_anchor_dof=%d shape_position_only=%d shape_status=%s user_intents=%d user_intent_conflicts=%d user_forced_tangent=%d user_forced_colinearity=%d user_forced_length=%d user_forced_distance=%d user_forced_angle=%d user_forced_skipped=%d auto_skipped_by_user_intent=%d desaturation_enabled=%d desaturation_solver_reported=%d desaturation_solver_removed=%d desaturation_tried=%d desaturation_removed=%d desaturation_kept=%d desaturation_skipped=%d desaturation_no_dof=%d skipped_relations=%d skipped_dimension_sources=%d added=%d failed=%d"
         % (
             len(endpoint_pairs),
             stats["symmetry_y"],
@@ -2736,7 +3196,11 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
             stats["symmetry_x_disabled"],
             stats["central_symmetry_disabled"],
             stats["symmetry_skipped_by_cluster"],
+            stats["symmetry_skipped_by_primitive"],
             len(junctions),
+            stats["primitive_tangencies"],
+            stats["parallel_groups"],
+            stats["parallel_links"],
             hv_count,
             stats["collinear_groups"],
             stats["collinear_members"],
@@ -2766,6 +3230,10 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
             stats["arbitrary_axis_skipped_by_competition"],
             stats["arbitrary_axis_skipped_by_global_structure"],
             stats["arbitrary_axes_disabled"],
+            stats["shape_dof"],
+            stats["shape_anchor_dof"],
+            stats["shape_position_only"],
+            stats.get("shape_status", "unknown"),
             stats["user_intents"],
             stats["user_intent_conflicts"],
             stats["user_forced_tangent"],

@@ -3705,7 +3705,7 @@ def start_path_overload_edit():
 
     path_id = _selected_path_id_for_overload_edit()
     if not path_id:
-        QtWidgets.QMessageBox.information(None, "euSKlid", "Select one Path group or piece to edit overloads.")
+        elog.help("Select one Path group or piece to edit overloads.")
         return False
 
     record_idx, record = _find_closed_path_record(path_id)
@@ -3873,14 +3873,7 @@ def _selected_item_path_piece(item):
 def _add_length_overload_for_pieces(selected, interactive=False):
     """Store a protected length overload from two clicked points."""
     if len(selected) != 2:
-        if interactive:
-            App.Console.PrintMessage("euSKlid Path: select two points for Preserve Length.\n")
-        else:
-            QtWidgets.QMessageBox.information(
-                None,
-                "euSKlid",
-                "Select exactly two points on the same opened contour, then run Preserve Length.",
-            )
+        elog.help("Select exactly two points on the same opened contour, then run Preserve Length.")
         return False
 
     norm = [_selected_item_path_piece(item) for item in selected]
@@ -3981,14 +3974,7 @@ def _add_length_overload_for_pieces(selected, interactive=False):
 def _add_tangent_overload_for_pieces(selected, interactive=False):
     """Store a protected tangent overload for the shortest user-selected path range."""
     if len(selected) != 2:
-        if interactive:
-            App.Console.PrintMessage("euSKlid Path: select two points/pieces for Preserve Tangent.\n")
-        else:
-            QtWidgets.QMessageBox.information(
-                None,
-                "euSKlid",
-                "Select exactly two points on the same opened contour, then run Preserve Tangent.",
-            )
+        elog.help("Select exactly two points on the same opened contour, then run Preserve Tangent.")
         return False
 
     norm = [_selected_item_path_piece(item) for item in selected]
@@ -4102,14 +4088,7 @@ def _add_tangent_overload_for_pieces(selected, interactive=False):
 def _add_colinearity_overload_for_pieces(selected, interactive=False):
     """Store a protected colinearity overload on two selected Path segments."""
     if len(selected) != 2:
-        if interactive:
-            App.Console.PrintMessage("euSKlid Path: select two segments for Preserve Colinearity.\n")
-        else:
-            QtWidgets.QMessageBox.information(
-                None,
-                "euSKlid",
-                "Select exactly two segments on the same opened contour, then run Preserve Colinearity.",
-            )
+        elog.help("Select exactly two segments on the same opened contour, then run Preserve Colinearity.")
         return False
 
     norm = [_selected_item_path_piece(item) for item in selected]
@@ -4173,14 +4152,7 @@ def _add_colinearity_overload_for_pieces(selected, interactive=False):
 def _add_angle_overload_for_pieces(selected, interactive=False):
     """Store a protected angle overload on two selected straight Path segments."""
     if len(selected) != 2:
-        if interactive:
-            App.Console.PrintMessage("euSKlid Path: select two segments for Preserve Angle.\n")
-        else:
-            QtWidgets.QMessageBox.information(
-                None,
-                "euSKlid",
-                "Select exactly two segments on the same opened contour, then run Preserve Angle.",
-            )
+        elog.help("Select exactly two segments on the same opened contour, then run Preserve Angle.")
         return False
 
     norm = [_selected_item_path_piece(item) for item in selected]
@@ -4223,6 +4195,7 @@ def _add_angle_overload_for_pieces(selected, interactive=False):
     if angle_value is None:
         QtWidgets.QMessageBox.warning(None, "euSKlid", "Cannot compute the selected angle.")
         return False
+    angle_value = abs(float(angle_value))
 
     overload = {
         "kind": "angle",
@@ -4230,7 +4203,7 @@ def _add_angle_overload_for_pieces(selected, interactive=False):
         "range": {
             "mode": "segment_pair",
             "value": float(angle_value),
-            "abs_value": float(abs(angle_value)),
+            "abs_value": float(angle_value),
             "value_degrees": float(math.degrees(angle_value)),
         },
         "strength": "protected_user_intent",
@@ -4257,14 +4230,7 @@ def _add_angle_overload_for_pieces(selected, interactive=False):
 def _add_distance_overload_for_pieces(selected, interactive=False):
     """Store a protected distance overload between two clicked Path references."""
     if len(selected) != 2:
-        if interactive:
-            App.Console.PrintMessage("euSKlid Path: select two references for Preserve Distance.\n")
-        else:
-            QtWidgets.QMessageBox.information(
-                None,
-                "euSKlid",
-                "Select exactly two points/references on the same opened contour, then run Preserve Distance.",
-            )
+        elog.help("Select exactly two points/references on the same opened contour, then run Preserve Distance.")
         return False
 
     norm = [_selected_item_path_piece(item) for item in selected]
@@ -4945,12 +4911,7 @@ def mark_selected_path_length_overload():
     try:
         Gui.Selection.addObserver(observer)
         _ACTIVE_OVERLOAD_SESSION = observer
-        App.Console.PrintMessage("euSKlid Path: Preserve Length active — click two points on closed Path pieces.\n")
-        QtWidgets.QMessageBox.information(
-            None,
-            "euSKlid",
-            "Preserve Length is active. Click two points on an opened contour. Press ESC or start another tool to cancel.",
-        )
+        elog.help("Preserve Length active: click two points on closed Path pieces.")
         return True
     except Exception as exc:
         App.Console.PrintError("euSKlid Path: cannot start Preserve Length: %s\n" % str(exc))
@@ -4982,12 +4943,7 @@ def mark_selected_path_tangent_overload():
     try:
         Gui.Selection.addObserver(observer)
         _ACTIVE_OVERLOAD_SESSION = observer
-        App.Console.PrintMessage("euSKlid Path: Preserve Tangent active — click two closed Path pieces.\n")
-        QtWidgets.QMessageBox.information(
-            None,
-            "euSKlid",
-            "Preserve Tangent is active. Click two pieces from the same closed Path.",
-        )
+        elog.help("Preserve Tangent active: click two closed Path pieces.")
         return True
     except Exception as e:
         _ACTIVE_OVERLOAD_SESSION = None
@@ -5012,12 +4968,7 @@ def mark_selected_path_colinearity_overload():
     try:
         Gui.Selection.addObserver(observer)
         _ACTIVE_OVERLOAD_SESSION = observer
-        App.Console.PrintMessage("euSKlid Path: Preserve Colinearity active — click two closed Path segments.\n")
-        QtWidgets.QMessageBox.information(
-            None,
-            "euSKlid",
-            "Preserve Colinearity is active. Click two straight segments from the same closed Path.",
-        )
+        elog.help("Preserve Colinearity active: click two closed Path segments.")
         return True
     except Exception as e:
         _ACTIVE_OVERLOAD_SESSION = None
@@ -5043,12 +4994,7 @@ def mark_selected_path_angle_overload():
     try:
         Gui.Selection.addObserver(observer)
         _ACTIVE_OVERLOAD_SESSION = observer
-        App.Console.PrintMessage("euSKlid Path: Preserve Angle active — click two closed Path segments.\n")
-        QtWidgets.QMessageBox.information(
-            None,
-            "euSKlid",
-            "Preserve Angle is active. Click two straight segments from the same closed Path.",
-        )
+        elog.help("Preserve Angle active: click two closed Path segments.")
         return True
     except Exception as e:
         _ACTIVE_OVERLOAD_SESSION = None
@@ -5074,12 +5020,7 @@ def mark_selected_path_distance_overload():
     try:
         Gui.Selection.addObserver(observer)
         _ACTIVE_OVERLOAD_SESSION = observer
-        App.Console.PrintMessage("euSKlid Path: Preserve Distance active — click two closed Path references.\n")
-        QtWidgets.QMessageBox.information(
-            None,
-            "euSKlid",
-            "Preserve Distance is active. Click two points/references from the same closed Path.",
-        )
+        elog.help("Preserve Distance active: click two closed Path references.")
         return True
     except Exception as e:
         _ACTIVE_OVERLOAD_SESSION = None
