@@ -382,6 +382,16 @@ def _piece_point_at_t(piece, t):
         return None
 
 
+def _piece_center_uv(piece):
+    try:
+        if piece.get("type") in {"arc", "circle"}:
+            c = piece.get("center")
+            return (float(c[0]), float(c[1]))
+    except Exception:
+        pass
+    return None
+
+
 def _piece_portion_uv_points(piece, t0, t1):
     try:
         t0 = max(0.0, min(1.0, float(t0)))
@@ -906,6 +916,37 @@ def _angle_value_for_piece_pair(record, piece_a_index, piece_b_index):
         return None
 
 
+def _angle_ref_for_selection(record, piece_index, click_uv=None):
+    try:
+        pieces = record.get("pieces", []) or []
+        piece = pieces[int(piece_index)]
+        if click_uv is None:
+            return {
+                "kind": "segment",
+                "piece": int(piece_index),
+                "uv": None,
+                "t": 0.5,
+            }
+        projected = _project_uv_to_piece(piece, click_uv)
+        uv = projected.get("uv")
+        t = float(projected.get("t", 0.5))
+        point_id = 1 if t <= 0.5 else 2
+        return {
+            "kind": "segment",
+            "piece": int(piece_index),
+            "uv": uv,
+            "t": float(t),
+            "point_id": int(point_id),
+        }
+    except Exception:
+        return {
+            "kind": "segment",
+            "piece": int(piece_index),
+            "uv": click_uv,
+            "t": 0.5,
+        }
+
+
 def _draw_angle_arc_glyph(record, piece_a_index, piece_b_index, group=None):
     """Draw a compact angle arc between two straight segment directions."""
     try:
@@ -1086,6 +1127,65 @@ def _distance_nearest_path_endpoint(record, click_uv, selected_piece_index=None)
     return None
 
 
+def _distance_nearest_arc_center(record, click_uv, selected_piece_index=None):
+    """Return nearest arc/circle center reference to a click, or None."""
+    if click_uv is None:
+        return None
+
+    try:
+        cx = float(click_uv[0])
+        cy = float(click_uv[1])
+    except Exception:
+        return None
+
+    pieces = record.get("pieces", []) or []
+    n = len(pieces)
+    if n <= 0:
+        return None
+
+    candidate_indices = []
+    try:
+        spi = int(selected_piece_index)
+        candidate_indices.append(spi)
+    except Exception:
+        pass
+    for i in range(n):
+        if i not in candidate_indices:
+            candidate_indices.append(i)
+
+    best = None
+    best_d = None
+    best_radius = None
+    try:
+        for pi in candidate_indices:
+            piece = pieces[int(pi)]
+            center = _piece_center_uv(piece)
+            if center is None:
+                continue
+            d = math.hypot(cx - float(center[0]), cy - float(center[1]))
+            if best_d is None or d < best_d:
+                best_d = d
+                best_radius = abs(float(piece.get("radius", 0.0)))
+                best = {
+                    "kind": "center",
+                    "piece": int(pi),
+                    "uv": (float(center[0]), float(center[1])),
+                    "t": 0.5,
+                }
+    except Exception:
+        return None
+
+    if best is None:
+        return None
+
+    bbox = _distance_path_bbox_diag(record)
+    radius = best_radius or bbox or 1.0
+    tol = max(0.06 * radius, 0.015 * bbox, 0.25)
+    if best_d is not None and best_d <= tol:
+        return best
+    return None
+
+
 
 def _distance_world_to_uv(plane, value):
     """Convert a FreeCAD selection hit point to UV.
@@ -1167,7 +1267,7 @@ def _distance_selectionex_uv(path_id, obj_name=None):
 
 def _distance_selection_kind(record, piece_index, click_uv):
     """
-    endpoint > point > segment
+    endpoint > center > segment
 
     For Preserve Distance, a click near a contour vertex must be interpreted as
     a POINT even if FreeCAD reports the selected object as a segment.
@@ -1180,6 +1280,10 @@ def _distance_selection_kind(record, piece_index, click_uv):
     endpoint = _distance_nearest_path_endpoint(record, click_uv, selected_piece_index=piece_index)
     if endpoint is not None:
         return endpoint
+
+    center = _distance_nearest_arc_center(record, click_uv, selected_piece_index=piece_index)
+    if center is not None:
+        return center
 
     try:
         projected = _project_uv_to_piece(piece, click_uv)
@@ -1227,14 +1331,15 @@ def _infer_distance_mode(sel0, sel1, record):
 
     k0 = sel0.get("kind")
     k1 = sel1.get("kind")
+    point_kinds = {"point", "center"}
 
-    if k0 == "point" and k1 == "point":
+    if k0 in point_kinds and k1 in point_kinds:
         return "point_point"
 
     if (
-        (k0 == "segment" and k1 == "point")
+        (k0 == "segment" and k1 in point_kinds)
         or
-        (k0 == "point" and k1 == "segment")
+        (k0 in point_kinds and k1 == "segment")
     ):
         return "segment_point"
 
@@ -1282,12 +1387,13 @@ def _distance_parallel_segments(record, sel0, sel1):
 
 def _distance_segment_point(record, seg_sel, pt_sel):
     """
-    True orthogonal distance from a point to a segment.
+    True orthogonal distance from a point/center to a segment support.
 
     IMPORTANT:
-    We must project geometrically onto the actual segment itself,
-    not rely on Path subpiece projection helpers which can return
-    unstable local coordinates on opened contours.
+    FreeCAD Sketcher constrains a point-to-segment distance against the support
+    line of the segment, not against the finite segment span.  Do not clamp the
+    projection to [0, 1], otherwise a user center-to-segment dimension becomes
+    an endpoint chord when the normal foot lies outside the visible segment.
     """
     pieces = record.get("pieces", []) or []
 
@@ -1315,9 +1421,8 @@ def _distance_segment_point(record, seg_sel, pt_sel):
     if seg_len2 <= 1e-12:
         proj = a
     else:
-        # orthogonal projection on finite segment
+        # Orthogonal projection on the infinite support line.
         t = ((px - ax) * vx + (py - ay) * vy) / seg_len2
-        t = max(0.0, min(1.0, t))
 
         proj = (
             ax + vx * t,
@@ -1356,6 +1461,8 @@ def _distance_ref_uv(record, ref):
         if uv is not None:
             return (float(uv[0]), float(uv[1]))
         pi = int(ref.get("piece"))
+        if str(ref.get("kind") or "") == "center":
+            return _piece_center_uv((record.get("pieces", []) or [])[pi])
         t = float(ref.get("t", 0.5))
         return _piece_point_at_t((record.get("pieces", []) or [])[pi], t)
     except Exception:
@@ -1370,9 +1477,9 @@ def _distance_value_for_refs(record, ref0, ref1):
         if mode == "segment_segment":
             data = _distance_parallel_segments(record, ref0, ref1)
         elif mode == "segment_point":
-            if ref0.get("kind") == "segment" and ref1.get("kind") == "point":
+            if ref0.get("kind") == "segment" and ref1.get("kind") in {"point", "center"}:
                 data = _distance_segment_point(record, ref0, ref1)
-            elif ref1.get("kind") == "segment" and ref0.get("kind") == "point":
+            elif ref1.get("kind") == "segment" and ref0.get("kind") in {"point", "center"}:
                 data = _distance_segment_point(record, ref1, ref0)
             else:
                 data = None
@@ -1411,13 +1518,13 @@ def _render_distance_overload(record, range_data, group=None):
             #
             # Endpoint clicks are authoritative.
 
-            if sel0.get("kind") == "segment" and sel1.get("kind") == "point":
+            if sel0.get("kind") == "segment" and sel1.get("kind") in {"point", "center"}:
                 data = _distance_segment_point(record, sel0, sel1)
 
-            elif sel1.get("kind") == "segment" and sel0.get("kind") == "point":
+            elif sel1.get("kind") == "segment" and sel0.get("kind") in {"point", "center"}:
                 data = _distance_segment_point(record, sel1, sel0)
 
-            elif sel0.get("kind") == "point" and sel1.get("kind") == "point":
+            elif sel0.get("kind") in {"point", "center"} and sel1.get("kind") in {"point", "center"}:
                 data = _distance_point_point(sel0, sel1)
 
             else:
@@ -1615,6 +1722,16 @@ def _draw_closed_path_record(record, index):
         if obj is not None:
             _tag_path_piece_object(obj, path_id, piece_index, piece.get("type", ""))
             objs.append(obj)
+        center_uv = _piece_center_uv(piece)
+        if center_uv is not None:
+            center_obj = _make_path_point(plane, center_uv, kind="fixed", name="euSKlidClosedPathCenter")
+            if center_obj is not None:
+                try:
+                    add_to_group(center_obj, group)
+                except Exception:
+                    pass
+                _tag_path_piece_object(center_obj, path_id, piece_index, "center")
+                objs.append(center_obj)
     objs.extend(_draw_overloads_for_record(record, index, group=group))
     _PATH_CLOSED_OBJECTS.extend(objs)
     return objs
@@ -3764,6 +3881,16 @@ def start_path_overload_edit():
                 except Exception:
                     pass
                 edit_objects.append(obj)
+            center_uv = _piece_center_uv(piece)
+            if center_uv is not None:
+                center_obj = _make_path_point(plane, center_uv, kind="fixed", name="euSKlidOverloadEditCenter")
+                if center_obj is not None:
+                    _tag_path_piece_object(center_obj, path_id, piece_index, "center")
+                    try:
+                        center_obj.ViewObject.Selectable = True
+                    except Exception:
+                        pass
+                    edit_objects.append(center_obj)
         except Exception as e:
             try:
                 App.Console.PrintError("euSKlid Path: cannot create overload edit piece %s: %s\n" % (piece_index, str(e)))
@@ -3805,7 +3932,8 @@ def _selected_closed_path_pieces():
                 continue
             path_id = str(getattr(obj, "EuSKlidPathId"))
             piece_index = int(getattr(obj, "EuSKlidPieceIndex"))
-            key = (path_id, piece_index)
+            piece_type = str(getattr(obj, "EuSKlidPieceType", "") or "")
+            key = (path_id, piece_index, piece_type)
             if key in seen:
                 continue
             seen.add(key)
@@ -4191,6 +4319,17 @@ def _add_angle_overload_for_pieces(selected, interactive=False):
             QtWidgets.QMessageBox.warning(None, "euSKlid", "Selected Path piece is invalid.")
             return False
 
+    refs = []
+    for idx, item in enumerate(selected[:2]):
+        click_uv = item.get("uv") if isinstance(item, dict) else None
+        if click_uv is None and not isinstance(item, dict):
+            try:
+                obj = item[2]
+                click_uv = _distance_selectionex_uv(path_id, obj_name=str(getattr(obj, "Name", "")))
+            except Exception:
+                click_uv = None
+        refs.append(_angle_ref_for_selection(record, pieces[idx], click_uv))
+
     angle_value = _angle_value_for_piece_pair(record, pieces[0], pieces[1])
     if angle_value is None:
         QtWidgets.QMessageBox.warning(None, "euSKlid", "Cannot compute the selected angle.")
@@ -4202,6 +4341,8 @@ def _add_angle_overload_for_pieces(selected, interactive=False):
         "pieces": list(dict.fromkeys(pieces)),
         "range": {
             "mode": "segment_pair",
+            "start": refs[0],
+            "end": refs[1],
             "value": float(angle_value),
             "abs_value": float(angle_value),
             "value_degrees": float(math.degrees(angle_value)),
@@ -4262,14 +4403,23 @@ def _add_distance_overload_for_pieces(selected, interactive=False):
         kind = item.get("kind") if isinstance(item, dict) else None
         uv = item.get("uv") if isinstance(item, dict) else None
         t = item.get("t", None) if isinstance(item, dict) else None
+        if kind is None and not isinstance(item, dict):
+            try:
+                obj = item[2]
+                if str(getattr(obj, "EuSKlidPieceType", "") or "") == "center":
+                    kind = "center"
+            except Exception:
+                pass
 
-        if kind not in ("point", "segment"):
+        if kind not in ("point", "segment", "center"):
             kind = "segment"
 
         if uv is None:
             try:
                 piece = (record.get("pieces", []) or [])[pieces[idx]]
-                if kind == "point":
+                if kind == "center":
+                    uv = _piece_center_uv(piece)
+                elif kind == "point":
                     uv = _piece_point_at_t(piece, 0.0 if float(t or 0.5) <= 0.5 else 1.0)
                 else:
                     uv = _piece_point_at_t(piece, 0.5)
@@ -4677,7 +4827,17 @@ class _AngleOverloadSelectionObserver:
                 App.Console.PrintMessage("euSKlid Path: Preserve Angle accepts only closed Path pieces.\n")
                 return
 
-            sel_item = {"path_id": item[0], "piece": int(item[1]), "uv": None, "object": item[2]}
+            click_uv = None
+            try:
+                record_idx, record = _find_closed_path_record(item[0])
+                plane = record.get("plane") if record is not None else None
+                click_uv = _distance_world_to_uv(plane, hit_world)
+                if click_uv is None:
+                    click_uv = _distance_selectionex_uv(item[0], obj_name=str(obj_name) if obj_name else None)
+            except Exception:
+                click_uv = None
+
+            sel_item = {"path_id": item[0], "piece": int(item[1]), "uv": click_uv, "object": item[2]}
             key = (item[0], int(item[1]))
             if key in self.seen:
                 try:
@@ -4790,7 +4950,17 @@ class _DistanceOverloadSelectionObserver:
 
             try:
                 record_idx, record = _find_closed_path_record(item[0])
-                semantic = _distance_selection_kind(record, int(item[1]), click_uv)
+                if str(getattr(obj, "EuSKlidPieceType", "") or "") == "center":
+                    piece = (record.get("pieces", []) or [])[int(item[1])]
+                    center_uv = _piece_center_uv(piece)
+                    semantic = {
+                        "kind": "center",
+                        "piece": int(item[1]),
+                        "uv": center_uv,
+                        "t": 0.5,
+                    }
+                else:
+                    semantic = _distance_selection_kind(record, int(item[1]), click_uv)
             except Exception:
                 semantic = {
                     "kind": "segment",
@@ -4983,7 +5153,28 @@ def mark_selected_path_angle_overload():
 
     selected = _selected_closed_path_pieces()
     if len(selected) == 2:
-        return _add_angle_overload_for_pieces(selected, interactive=False)
+        enriched = []
+        for path_id, piece_index, obj in selected:
+            uv = None
+            try:
+                uv = _distance_selectionex_uv(path_id, obj_name=str(getattr(obj, "Name", "")))
+            except Exception:
+                uv = None
+            if uv is None:
+                enriched = []
+                break
+            enriched.append({
+                "path_id": str(path_id),
+                "piece": int(piece_index),
+                "uv": uv,
+                "object": obj,
+            })
+        if len(enriched) == 2:
+            return _add_angle_overload_for_pieces(enriched, interactive=False)
+        try:
+            App.Console.PrintMessage("euSKlid Path: Preserve Angle needs two clicked segment references; starting interactive selection.\n")
+        except Exception:
+            pass
 
     _stop_active_overload_session()
     try:

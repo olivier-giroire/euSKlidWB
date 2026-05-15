@@ -29,6 +29,7 @@ from .detect import (
 )
 from .topology import (
     connected_junctions,
+    endpoint_clusters,
     endpoint_coincidence_pairs,
     arbitrary_center_symmetry_candidates,
     arbitrary_axis_symmetry_candidates,
@@ -1750,6 +1751,655 @@ def _strong_parallel_candidate(meta, max_length):
         return False
 
 
+def _meta_stable_id(meta):
+    try:
+        return int(meta.get("index"))
+    except Exception:
+        return id(meta)
+
+
+def _meta_piece_keys(meta):
+    keys = set()
+    for key_name in ("piece_order", "path_order", "index"):
+        try:
+            keys.add(int(meta.get(key_name)))
+        except Exception:
+            pass
+    return keys
+
+
+def _meta_span_weight(meta):
+    try:
+        if meta.get("type") == "segment":
+            return float(segment_length(meta))
+        if meta.get("type") == "arc":
+            return float(arc_sweep_length(meta))
+    except Exception:
+        pass
+    return 0.0
+
+
+def _add_master_score(scores, reasons, meta, value, reason):
+    mid = _meta_stable_id(meta)
+    scores[mid] = float(scores.get(mid, 0.0)) + float(value)
+    reasons.setdefault(mid, []).append(str(reason))
+
+
+def _symmetry_pair_from_nodes(node_a, node_b):
+    try:
+        _order_a, meta_a, point_a, _pos_a = node_a[3]
+        _order_b, meta_b, point_b, _pos_b = node_b[3]
+        return (meta_a, int(point_a), meta_b, int(point_b))
+    except Exception:
+        return None
+
+
+def _collect_master_diagnostic_symmetry_families(geom_meta, tol):
+    families = []
+
+    def add_family(kind, pairs, score=None, center=None, axis=None):
+        pairs = [p for p in pairs if p is not None]
+        if not pairs:
+            return
+        families.append({
+            "kind": str(kind),
+            "pairs": pairs,
+            "score": float(score if score is not None else len(pairs)),
+            "center": center,
+            "axis": axis,
+        })
+
+    add_family("axis_y", list(mirrored_endpoint_pairs_y_axis(geom_meta, tol)))
+    add_family("axis_x", list(mirrored_endpoint_pairs_x_axis(geom_meta, tol)))
+    add_family("center_origin", list(mirrored_endpoint_pairs_center_origin(geom_meta, tol)))
+
+    try:
+        for candidate in arbitrary_center_symmetry_candidates(
+            geom_meta,
+            tol,
+            min_score=3,
+            include_origin=True,
+        ):
+            pairs = []
+            for node_a, node_b, _relevance in candidate.get("pairs", []) or []:
+                pair = _symmetry_pair_from_nodes(node_a, node_b)
+                if pair is not None:
+                    pairs.append(pair)
+            add_family(
+                "center_arbitrary",
+                pairs,
+                score=float(candidate.get("weighted_score", len(pairs))),
+                center=candidate.get("center"),
+            )
+    except Exception:
+        pass
+
+    families.sort(key=lambda fam: (-float(fam.get("score", 0.0)), -len(fam.get("pairs", []) or []), fam.get("kind", "")))
+    return families
+
+
+def _line_distance_to_point(meta, point):
+    try:
+        p0 = _point_position(meta, 1)
+        p1 = _point_position(meta, 2)
+        if p0 is None or p1 is None or point is None:
+            return None
+        x0, y0 = p0
+        x1, y1 = p1
+        px, py = float(point[0]), float(point[1])
+        dx = x1 - x0
+        dy = y1 - y0
+        length = math.hypot(dx, dy)
+        if length <= 1e-12:
+            return None
+        return abs(dx * (y0 - py) - (x0 - px) * dy) / length
+    except Exception:
+        return None
+
+
+def _meta_piece_order(meta):
+    try:
+        return int(meta.get("piece_order"))
+    except Exception:
+        try:
+            return int(meta.get("path_order"))
+        except Exception:
+            return _meta_stable_id(meta)
+
+
+def _fmt_uv_point(point):
+    try:
+        return "(%.2f,%.2f)" % (float(point[0]), float(point[1]))
+    except Exception:
+        return "(?,?)"
+
+
+def _meta_debug_label(meta):
+    try:
+        kind = str(meta.get("type") or "?")
+        order = _meta_piece_order(meta)
+        idx = _meta_stable_id(meta)
+        if kind == "segment":
+            return "p%d/g%d segment %s->%s" % (
+                int(order),
+                int(idx),
+                _fmt_uv_point(meta.get("start")),
+                _fmt_uv_point(meta.get("end")),
+            )
+        if kind == "arc":
+            return "p%d/g%d arc c%s r%.3g %s->%s" % (
+                int(order),
+                int(idx),
+                _fmt_uv_point(meta.get("center")),
+                float(meta.get("radius", 0.0)),
+                _fmt_uv_point(meta.get("start")),
+                _fmt_uv_point(meta.get("end")),
+            )
+        return "p%d/g%d %s" % (int(order), int(idx), kind)
+    except Exception:
+        return "g%s" % _meta_stable_id(meta)
+
+
+def _meta_set_debug_summary(ids, metas_by_id, reasons=None, limit=12):
+    labels = []
+    for mid in sorted(ids):
+        meta = metas_by_id.get(mid)
+        if meta is None:
+            labels.append("g%d ?" % int(mid))
+            continue
+        reason_text = ""
+        if reasons is not None:
+            rs = reasons.get(mid) or []
+            if rs:
+                reason_text = " {%s}" % ",".join(rs[:3])
+        labels.append("%s%s" % (_meta_debug_label(meta), reason_text))
+    if len(labels) > int(limit):
+        labels = labels[: int(limit)] + ["... +%d" % (len(labels) - int(limit))]
+    return " | ".join(labels)
+
+
+def _candidate_tangent_refs(endpoint_pairs, junctions, user_intents):
+    out = []
+    seen = set()
+
+    def add_if_tangent(cur, cur_point, nxt, nxt_point):
+        try:
+            cur_type = cur.get("type")
+            nxt_type = nxt.get("type")
+            if "arc" not in {cur_type, nxt_type}:
+                return
+            if cur_type not in {"segment", "arc"} or nxt_type not in {"segment", "arc"}:
+                return
+            if has_directional_user_intent(user_intents, cur, nxt):
+                return
+            if not are_tangent_vectors(_tangent_vec_at_endpoint(cur, cur_point), _tangent_vec_at_endpoint(nxt, nxt_point)):
+                return
+            key = (min(_meta_stable_id(cur), _meta_stable_id(nxt)), max(_meta_stable_id(cur), _meta_stable_id(nxt)))
+            if key in seen:
+                return
+            seen.add(key)
+            out.append((cur, int(cur_point), nxt, int(nxt_point)))
+        except Exception:
+            return
+
+    for cur, cur_point, nxt, nxt_point in endpoint_pairs:
+        add_if_tangent(cur, cur_point, nxt, nxt_point)
+    for _i, cur, nxt in junctions:
+        add_if_tangent(cur, 2, nxt, 1)
+    return out
+
+
+def _cluster_contains_tangent_ref(cluster, tangent_refs):
+    refs = set()
+    for cur, cur_point, nxt, nxt_point in tangent_refs:
+        refs.add((_meta_stable_id(cur), int(cur_point)))
+        refs.add((_meta_stable_id(nxt), int(nxt_point)))
+    for _order, meta, point_id, _pos in cluster:
+        if (_meta_stable_id(meta), int(point_id)) in refs:
+            return True
+    return False
+
+
+def _shortest_order_path_ids(order_ids, start_id, target_id, max_edges=3):
+    try:
+        ids = list(order_ids)
+        if start_id not in ids or target_id not in ids:
+            return []
+        n = len(ids)
+        if n <= 0:
+            return []
+        i = ids.index(start_id)
+        j = ids.index(target_id)
+        forward_steps = (j - i) % n
+        backward_steps = (i - j) % n
+        if forward_steps <= backward_steps:
+            steps = forward_steps
+            if steps > int(max_edges):
+                return []
+            return [ids[(i + k) % n] for k in range(steps + 1)]
+        steps = backward_steps
+        if steps > int(max_edges):
+            return []
+        return [ids[(i - k) % n] for k in range(steps + 1)]
+    except Exception:
+        return []
+
+
+def _order_path_options_ids(order_ids, start_id, target_id, max_edges=None):
+    try:
+        ids = list(order_ids)
+        if start_id not in ids or target_id not in ids:
+            return []
+        n = len(ids)
+        if n <= 0:
+            return []
+        i = ids.index(start_id)
+        j = ids.index(target_id)
+        forward_steps = (j - i) % n
+        backward_steps = (i - j) % n
+        paths = []
+        if max_edges is None or forward_steps <= int(max_edges):
+            paths.append([ids[(i + k) % n] for k in range(forward_steps + 1)])
+        if backward_steps != forward_steps and (max_edges is None or backward_steps <= int(max_edges)):
+            paths.append([ids[(i - k) % n] for k in range(backward_steps + 1)])
+        return paths
+    except Exception:
+        return []
+
+
+def _order_distance_ids(order_ids, a_id, b_id):
+    try:
+        ids = list(order_ids)
+        if a_id not in ids or b_id not in ids:
+            return None
+        n = len(ids)
+        if n <= 0:
+            return None
+        ia = ids.index(a_id)
+        ib = ids.index(b_id)
+        return min((ib - ia) % n, (ia - ib) % n)
+    except Exception:
+        return None
+
+
+def _diagnose_master_slave_strategy(geom_meta, user_intents, endpoint_pairs, junctions, tol, stats):
+    """Log-only master/slave analysis for future symmetry-aware emission.
+
+    This deliberately does not add or remove constraints.  It scores pieces by
+    local intent, finds a dominant symmetry family, and reports which pieces
+    would currently act as master or slave.
+    """
+    scores = {}
+    user_scores = {}
+    driver_scores = {}
+    reasons = {}
+    metas_by_id = {}
+    piece_to_meta = {}
+    for meta in geom_meta:
+        mid = _meta_stable_id(meta)
+        metas_by_id[mid] = meta
+        for key in _meta_piece_keys(meta):
+            piece_to_meta[key] = meta
+    order_items = sorted(
+        (
+            int(meta.get("path_order", meta.get("piece_order", order))),
+            _meta_stable_id(meta),
+        )
+        for order, meta in enumerate(geom_meta)
+    )
+    order_ids = [mid for _order, mid in order_items]
+
+    weights = [_meta_span_weight(meta) for meta in geom_meta]
+    max_weight = max(weights) if weights else 0.0
+    for meta in geom_meta:
+        weight = _meta_span_weight(meta)
+        if max_weight > 0.0 and weight >= 0.45 * max_weight:
+            _add_master_score(scores, reasons, meta, 2.0, "extreme_geometry_weight")
+        if meta.get("type") == "arc":
+            _add_master_score(scores, reasons, meta, 1.0, "arc_support")
+
+    for intent in user_intents or []:
+        kind = str(intent.get("kind") or "")
+        if kind in {"length", "distance", "angle"}:
+            value = 10.0
+        elif kind in {"tangent", "colinearity"}:
+            value = 7.0
+        else:
+            value = 4.0
+        pieces = list(intent.get("pieces") or [])
+        try:
+            pair = intent.get("piece_pair")
+            if pair is not None:
+                pieces.extend([int(pair[0]), int(pair[1])])
+        except Exception:
+            pass
+        intent_metas = []
+        for piece in dict.fromkeys(pieces):
+            try:
+                meta = piece_to_meta.get(int(piece))
+            except Exception:
+                meta = None
+            if meta is not None:
+                intent_metas.append(meta)
+
+        relation_span = None
+        intent_ids = [_meta_stable_id(meta) for meta in intent_metas]
+        if len(intent_ids) >= 2:
+            spans = []
+            for ia, ida in enumerate(intent_ids):
+                for idb in intent_ids[ia + 1:]:
+                    span = _order_distance_ids(order_ids, ida, idb)
+                    if span is not None:
+                        spans.append(int(span))
+            if spans:
+                relation_span = min(spans)
+
+        if kind == "length":
+            driver_value = 10.0
+        elif kind in {"tangent", "colinearity"}:
+            driver_value = value
+        elif kind == "angle":
+            # Non-adjacent angles are usually measurements against a remote
+            # direction. Keep the dimension strong, but avoid letting it choose
+            # the mirrored master side by itself.
+            driver_value = 10.0 if relation_span is None or relation_span <= 1 else 2.0
+        elif kind == "distance":
+            # Local distances shape the master module. Transverse distances can
+            # reference the opposite side, so they are only weak orientation
+            # hints for the master/slave split.
+            driver_value = 7.0 if relation_span is not None and relation_span <= 2 else 1.5
+        else:
+            driver_value = 0.0
+
+        for meta in intent_metas:
+            _add_master_score(scores, reasons, meta, value, "user_%s" % kind)
+            mid = _meta_stable_id(meta)
+            user_scores[mid] = float(user_scores.get(mid, 0.0)) + float(value)
+            if driver_value > 0.0:
+                driver_scores[mid] = float(driver_scores.get(mid, 0.0)) + float(driver_value)
+
+    tangent_refs = _candidate_tangent_refs(endpoint_pairs, junctions, user_intents)
+    for cur, _cur_point, nxt, _nxt_point in tangent_refs:
+        _add_master_score(scores, reasons, cur, 6.0, "tangent_boundary")
+        _add_master_score(scores, reasons, nxt, 6.0, "tangent_boundary")
+
+    try:
+        segments = [meta for meta in geom_meta if meta.get("type") == "segment"]
+        dist_tol = max(float(tol) * 0.25, 1e-6)
+        for group in group_collinear_segments(segments, dist_tol=dist_tol):
+            for meta in group:
+                _add_master_score(scores, reasons, meta, 2.0, "collinear_family")
+        for group in _parallel_direction_groups(segments):
+            for meta in group:
+                _add_master_score(scores, reasons, meta, 1.0, "parallel_family")
+    except Exception:
+        pass
+
+    families = _collect_master_diagnostic_symmetry_families(geom_meta, max(float(tol), 1e-5))
+    dominant = families[0] if families else None
+    if dominant and dominant.get("center") is not None:
+        center = dominant.get("center")
+        for meta in geom_meta:
+            if meta.get("type") != "segment":
+                continue
+            distance = _line_distance_to_point(meta, center)
+            if distance is not None and distance <= max(float(tol), 1e-5):
+                _add_master_score(scores, reasons, meta, 3.0, "aligned_with_symmetry_center")
+
+    symmetry_pairs = list((dominant or {}).get("pairs", []) or [])
+    pairmate = {}
+    paired_ids = set()
+    for meta_a, _point_a, meta_b, _point_b in symmetry_pairs:
+        ida = _meta_stable_id(meta_a)
+        idb = _meta_stable_id(meta_b)
+        if ida == idb:
+            continue
+        pairmate.setdefault(ida, set()).add(idb)
+        pairmate.setdefault(idb, set()).add(ida)
+        paired_ids.add(ida)
+        paired_ids.add(idb)
+
+    master_ids = set()
+    slave_ids = set()
+    ambiguous_ids = set()
+
+    strong_adjacency = {}
+    for cur, _cur_point, nxt, _nxt_point in tangent_refs:
+        ida = _meta_stable_id(cur)
+        idb = _meta_stable_id(nxt)
+        if ida == idb:
+            continue
+        strong_adjacency.setdefault(ida, set()).add(idb)
+        strong_adjacency.setdefault(idb, set()).add(ida)
+
+    driver_seed_ids = {mid for mid, value in driver_scores.items() if float(value) >= 7.0}
+    if not driver_seed_ids:
+        driver_seed_ids = {mid for mid, value in driver_scores.items() if float(value) > 0.0}
+    master_hint_ids = set(driver_seed_ids)
+    for mid in list(driver_seed_ids):
+        master_hint_ids.update(strong_adjacency.get(mid, set()))
+
+    path_expanded_ids = set()
+    try:
+        tangent_boundary_ids = set()
+        for cur, _cur_point, nxt, _nxt_point in tangent_refs:
+            tangent_boundary_ids.add(_meta_stable_id(cur))
+            tangent_boundary_ids.add(_meta_stable_id(nxt))
+
+        def path_value(path):
+            total = 0.0
+            for mid in path:
+                total += float(driver_scores.get(mid, 0.0)) * 3.0
+                if mid in tangent_boundary_ids:
+                    total += 8.0
+                if mid in strong_adjacency:
+                    total += 2.0
+            total -= max(0, len(path) - 1) * 0.35
+            return total
+
+        selected_paths = []
+        primary_seed_id = None
+        if driver_seed_ids:
+            primary_seed_id = max(
+                driver_seed_ids,
+                key=lambda mid: (
+                    float(driver_scores.get(mid, 0.0)),
+                    float(user_scores.get(mid, 0.0)),
+                    float(scores.get(mid, 0.0)),
+                    -int(mid),
+                ),
+            )
+
+        if primary_seed_id is not None:
+            max_edges = max(3, min(len(order_ids) - 1, (len(order_ids) // 2) + 1))
+            best_path = []
+            best_value = -1e100
+            for boundary_id in tangent_boundary_ids:
+                if boundary_id == primary_seed_id:
+                    continue
+                for path in _order_path_options_ids(order_ids, primary_seed_id, boundary_id, max_edges=max_edges):
+                    if not path:
+                        continue
+                    value = path_value(path)
+                    if value > best_value or (abs(value - best_value) <= 1e-9 and len(path) > len(best_path)):
+                        best_value = value
+                        best_path = path
+            if best_path:
+                selected_paths.append(best_path)
+
+            selected_ids = set(best_path)
+            for seed_id in sorted(driver_seed_ids):
+                if seed_id in selected_ids:
+                    continue
+                best_path = []
+                best_value = -1e100
+                for target_id in selected_ids:
+                    for path in _order_path_options_ids(order_ids, seed_id, target_id, max_edges=3):
+                        if not path:
+                            continue
+                        value = path_value(path)
+                        if value > best_value or (abs(value - best_value) <= 1e-9 and len(path) < len(best_path)):
+                            best_value = value
+                            best_path = path
+                if best_path:
+                    selected_paths.append(best_path)
+                    selected_ids.update(best_path)
+
+        for best_path in selected_paths:
+            for mid in best_path:
+                path_expanded_ids.add(mid)
+                for nb in strong_adjacency.get(mid, set()):
+                    path_expanded_ids.add(nb)
+    except Exception:
+        path_expanded_ids = set()
+
+    for mid in path_expanded_ids:
+        master_hint_ids.add(mid)
+        meta = metas_by_id.get(mid)
+        if meta is not None:
+            _add_master_score(scores, reasons, meta, 0.5, "path_to_tangent_boundary")
+
+    # First orientation pass: explicit user dimensions and overloads decide the
+    # master side.  Pure geometry weight must not make both symmetric sides
+    # masters; it is only a secondary tie-breaker.
+    for meta_a, _point_a, meta_b, _point_b in symmetry_pairs:
+        ida = _meta_stable_id(meta_a)
+        idb = _meta_stable_id(meta_b)
+        ua = float(user_scores.get(ida, 0.0))
+        ub = float(user_scores.get(idb, 0.0))
+        da = float(driver_scores.get(ida, 0.0))
+        db = float(driver_scores.get(idb, 0.0))
+        sa = float(scores.get(ida, 0.0))
+        sb = float(scores.get(idb, 0.0))
+        if ida in master_hint_ids and idb not in master_hint_ids:
+            master_ids.add(ida)
+            slave_ids.add(idb)
+        elif idb in master_hint_ids and ida not in master_hint_ids:
+            master_ids.add(idb)
+            slave_ids.add(ida)
+        elif da > db:
+            master_ids.add(ida)
+            slave_ids.add(idb)
+        elif db > da:
+            master_ids.add(idb)
+            slave_ids.add(ida)
+        elif ua > ub:
+            master_ids.add(ida)
+            slave_ids.add(idb)
+        elif ub > ua:
+            master_ids.add(idb)
+            slave_ids.add(ida)
+        elif ua > 0.0 and ub > 0.0:
+            ambiguous_ids.update((ida, idb))
+        elif sa > sb and max(sa, sb) >= 10.0:
+            master_ids.add(ida)
+            slave_ids.add(idb)
+        elif sb > sa and max(sa, sb) >= 10.0:
+            master_ids.add(idb)
+            slave_ids.add(ida)
+
+    # User-driven pieces without an identified symmetric mate are still master
+    # seeds.  This keeps dimensions inside the master island while preventing
+    # unpaired geometry weight alone from inflating the master region.
+    for mid, score in user_scores.items():
+        if float(score) > 0.0 and mid not in slave_ids:
+            master_ids.add(mid)
+
+    # Strong local expansion from the user-selected master island.  Tangency is
+    # the clearest boundary-carrying relation in this model: it pulls the
+    # adjacent arc/segment into the master side, but does not cross a pair
+    # already classified as slave.
+    for mid in list(master_ids):
+        for nb in strong_adjacency.get(mid, set()):
+            if nb in slave_ids:
+                continue
+            if nb in master_hint_ids:
+                master_ids.add(nb)
+                for mate in pairmate.get(nb, set()):
+                    if mate not in master_ids and mate not in slave_ids:
+                        slave_ids.add(mate)
+
+    for mid in list(master_ids):
+        for mate in pairmate.get(mid, set()):
+            if mate not in master_ids:
+                slave_ids.add(mate)
+
+    overlap_ids = master_ids.intersection(slave_ids)
+
+    clusters = endpoint_clusters(geom_meta, max(float(tol), 1e-5))
+    strong_boundary_count = 0
+    soft_boundary_count = 0
+    for cluster in clusters:
+        if _cluster_contains_tangent_ref(cluster, tangent_refs):
+            strong_boundary_count += 1
+            continue
+        types = {str(meta.get("type") or "") for _order, meta, _point_id, _pos in cluster}
+        if len(cluster) >= 2 and types == {"segment"}:
+            soft_boundary_count += 1
+
+    top_scores = sorted(scores.items(), key=lambda item: (-float(item[1]), int(item[0])))[:8]
+    top_summary = []
+    for mid, score in top_scores:
+        meta = metas_by_id.get(mid, {})
+        top_summary.append(
+            "%s:%s:%.1f:%s"
+            % (
+                int(mid),
+                str(meta.get("type") or "?"),
+                float(score),
+                ",".join((reasons.get(mid) or [])[:3]),
+            )
+        )
+
+    stats["master_diag_symmetry_families"] = len(families)
+    stats["master_diag_symmetry_pairs"] = len(symmetry_pairs)
+    stats["master_diag_master_pieces"] = len(master_ids)
+    stats["master_diag_slave_pieces"] = len(slave_ids)
+    stats["master_diag_overlap_pieces"] = len(overlap_ids)
+    stats["master_diag_ambiguous_pieces"] = len(ambiguous_ids)
+    stats["master_diag_path_expanded_pieces"] = len(path_expanded_ids)
+    stats["master_diag_strong_boundaries"] = strong_boundary_count
+    stats["master_diag_soft_boundaries"] = soft_boundary_count
+
+    try:
+        center_text = ""
+        if dominant and dominant.get("center") is not None:
+            cx, cy = dominant.get("center")
+            center_text = " center=(%.4f,%.4f)" % (float(cx), float(cy))
+        _log(
+            "Master diagnostic: family=%s score=%.2f pairs=%d%s master=%s slave=%s overlap=%s ambiguous=%s path_expanded=%s strong_boundaries=%d soft_boundaries=%d top=%s"
+            % (
+                (dominant or {}).get("kind", "none"),
+                float((dominant or {}).get("score", 0.0)),
+                len(symmetry_pairs),
+                center_text,
+                sorted(master_ids),
+                sorted(slave_ids),
+                sorted(overlap_ids),
+                sorted(ambiguous_ids),
+                sorted(path_expanded_ids),
+                strong_boundary_count,
+                soft_boundary_count,
+                " | ".join(top_summary),
+            )
+        )
+        _log("Master diagnostic detail: master=%s" % _meta_set_debug_summary(master_ids, metas_by_id, reasons))
+        _log("Master diagnostic detail: slave=%s" % _meta_set_debug_summary(slave_ids, metas_by_id, reasons))
+        if path_expanded_ids:
+            _log("Master diagnostic detail: path_expanded=%s" % _meta_set_debug_summary(path_expanded_ids, metas_by_id, reasons))
+    except Exception:
+        pass
+
+    return {
+        "families": families,
+        "dominant": dominant,
+        "scores": scores,
+        "reasons": reasons,
+        "master_ids": master_ids,
+        "slave_ids": slave_ids,
+    }
+
+
 def _axis_direction_globally_relevant(profile, axis):
     """Return whether an H/V marker carries global intent.
 
@@ -1853,6 +2503,9 @@ def _meta_point_id_from_ref(meta, ref, tol=1e-5):
     if meta is None or ref is None:
         return None
 
+    if str((ref or {}).get("kind") or "") == "center":
+        return 3
+
     try:
         t = float((ref or {}).get("t", 0.5))
         if t <= 0.001:
@@ -1900,6 +2553,8 @@ def _segment_length_from_meta(meta):
 def _ref_position_from_meta(meta, ref):
     if meta is None or ref is None:
         return None
+    if str((ref or {}).get("kind") or "") == "center":
+        return _point_position(meta, 3)
     try:
         uv = ref.get("uv")
         if uv is not None:
@@ -1977,14 +2632,15 @@ def _segment_unit_direction(meta):
 
 def _user_distance_value(a_meta, a_ref, a_kind, b_meta, b_ref, b_kind):
     """Return the numeric value matching the stored distance semantics."""
-    if a_kind == "point" and b_kind == "point":
+    point_kinds = {"point", "center"}
+    if a_kind in point_kinds and b_kind in point_kinds:
         return _dimension_value_from_refs(a_meta, a_ref, b_meta, b_ref)
 
-    if a_kind == "segment" and b_kind == "point":
+    if a_kind == "segment" and b_kind in point_kinds:
         point = _ref_position_from_meta(b_meta, b_ref)
         return _segment_support_distance_from_point(a_meta, point)
 
-    if a_kind == "point" and b_kind == "segment":
+    if a_kind in point_kinds and b_kind == "segment":
         point = _ref_position_from_meta(a_meta, a_ref)
         return _segment_support_distance_from_point(b_meta, point)
 
@@ -2026,7 +2682,7 @@ def _create_user_distance_ref_point(add_protected_constraint_safe, meta, ref, ki
         return None
 
     try:
-        if str(kind) == "point":
+        if str(kind) in {"point", "center"}:
             pid = _meta_point_id_from_ref(meta, ref)
             if pid is not None:
                 add_protected_constraint_safe("Coincident", idx, 1, meta["index"], int(pid))
@@ -2190,11 +2846,15 @@ def _add_user_distance_dimension(add_protected_constraint_safe, stats, piece_map
 
     try:
         stored_value = rng.get("value")
-        value = None if stored_value is None else abs(float(stored_value))
+        stored_value = None if stored_value is None else abs(float(stored_value))
     except Exception:
-        value = None
+        stored_value = None
+    # Recompute from semantic refs whenever possible.  Older overloads could
+    # store a point-to-segment value measured to the finite segment endpoint;
+    # the Sketcher intent is the normal distance to the segment support.
+    value = _user_distance_value(a_meta, a_ref, a_kind, b_meta, b_ref, b_kind)
     if value is None:
-        value = _user_distance_value(a_meta, a_ref, a_kind, b_meta, b_ref, b_kind)
+        value = stored_value
     if value is None:
         stats["user_forced_skipped"] += 1
         stats["skipped_dimensions"] += 1
@@ -2204,6 +2864,31 @@ def _add_user_distance_dimension(add_protected_constraint_safe, stats, piece_map
 
     a_pid = _meta_point_id_from_ref(a_meta, a_ref)
     b_pid = _meta_point_id_from_ref(b_meta, b_ref)
+
+    # Endpoints and arc/circle centers are real Sketcher points.  Prefer direct
+    # point dimensions over auxiliary construction points.
+    point_kinds = {"point", "center"}
+    if a_kind in point_kinds and b_kind in point_kinds and a_pid is not None and b_pid is not None:
+        candidates.extend([
+            ("Distance", a_meta["index"], int(a_pid), b_meta["index"], int(b_pid), float(value)),
+            ("Distance", b_meta["index"], int(b_pid), a_meta["index"], int(a_pid), float(value)),
+        ])
+
+    # Point/center to segment is a normal distance to the segment support.
+    # Prefer Sketcher's direct point-line form so the exported dimension keeps
+    # the user's geometric intent instead of creating a free chord distance.
+    if a_kind == "segment" and b_kind in point_kinds and b_pid is not None:
+        candidates.extend([
+            ("Distance", b_meta["index"], int(b_pid), a_meta["index"], float(value)),
+            ("Distance", a_meta["index"], 1, b_meta["index"], int(b_pid), float(value)),
+            ("Distance", a_meta["index"], 2, b_meta["index"], int(b_pid), float(value)),
+        ])
+    elif a_kind in point_kinds and b_kind == "segment" and a_pid is not None:
+        candidates.extend([
+            ("Distance", a_meta["index"], int(a_pid), b_meta["index"], float(value)),
+            ("Distance", b_meta["index"], 1, a_meta["index"], int(a_pid), float(value)),
+            ("Distance", b_meta["index"], 2, a_meta["index"], int(a_pid), float(value)),
+        ])
 
     # Segment/segment means "normal distance between two parallel supports".
     # FreeCAD's GUI represents this without auxiliary geometry; the stable
@@ -2227,6 +2912,12 @@ def _add_user_distance_dimension(add_protected_constraint_safe, stats, piece_map
                 ("Distance", b_meta["index"], 2, a_meta["index"], float(value)),
             ])
 
+    if candidates and _try_protected_dimension_candidates(add_protected_constraint_safe, candidates):
+        stats["user_forced_distance"] += 1
+        return True
+
+    candidates = []
+
     # Point-based fallback. It avoids Sketcher line/point Distance overloads
     # that can be accepted by the constructor but later reported as malformed.
     if not (a_kind == "segment" and b_kind == "segment"):
@@ -2237,14 +2928,6 @@ def _add_user_distance_dimension(add_protected_constraint_safe, stats, piece_map
                 ("Distance", int(ref_a_idx), 1, int(ref_b_idx), 1, float(value)),
                 ("Distance", int(ref_b_idx), 1, int(ref_a_idx), 1, float(value)),
             ])
-
-    # Direct endpoint-to-endpoint fallback only.  Avoid the ambiguous line-based
-    # overloads that produced malformed constraints in FreeCAD.
-    if a_kind == "point" and b_kind == "point" and a_pid is not None and b_pid is not None:
-        candidates.extend([
-            ("Distance", a_meta["index"], int(a_pid), b_meta["index"], int(b_pid), float(value)),
-            ("Distance", b_meta["index"], int(b_pid), a_meta["index"], int(a_pid), float(value)),
-        ])
 
     if _try_protected_dimension_candidates(add_protected_constraint_safe, candidates):
         stats["user_forced_distance"] += 1
@@ -2328,6 +3011,121 @@ def _stored_angle_value(intent):
         return None
 
 
+def _line_support_intersection(a, b):
+    try:
+        a0 = _point_position(a, 1)
+        a1 = _point_position(a, 2)
+        b0 = _point_position(b, 1)
+        b1 = _point_position(b, 2)
+        if a0 is None or a1 is None or b0 is None or b1 is None:
+            return None
+        ax, ay = float(a0[0]), float(a0[1])
+        bx, by = float(b0[0]), float(b0[1])
+        adx = float(a1[0]) - ax
+        ady = float(a1[1]) - ay
+        bdx = float(b1[0]) - bx
+        bdy = float(b1[1]) - by
+        den = adx * bdy - ady * bdx
+        if abs(den) <= 1e-12:
+            return None
+        t = ((bx - ax) * bdy - (by - ay) * bdx) / den
+        return (ax + adx * t, ay + ady * t)
+    except Exception:
+        return None
+
+
+def _angle_point_id_from_ref(meta, ref):
+    try:
+        ref = ref or {}
+        point_id = ref.get("point_id")
+        if point_id is not None:
+            point_id = int(point_id)
+            if point_id in (1, 2):
+                return point_id
+    except Exception:
+        pass
+
+    try:
+        uv = (ref or {}).get("uv")
+        if uv is not None:
+            candidates = []
+            for pid in (1, 2):
+                pos = _point_position(meta, pid)
+                if pos is not None:
+                    candidates.append((_distance2(pos, uv), pid))
+            if candidates:
+                candidates.sort()
+                return int(candidates[0][1])
+    except Exception:
+        pass
+
+    if (ref or {}).get("uv") is None:
+        return None
+
+    try:
+        return 1 if float((ref or {}).get("t", 0.5)) <= 0.5 else 2
+    except Exception:
+        return None
+
+
+def _angle_endpoint_pair_candidates(a, b, a_ref=None, b_ref=None):
+    """Return preferred endpoint attachments for an angle constraint."""
+    pairs = []
+    seen = set()
+
+    def add(pa, pb, rank):
+        key = (int(pa), int(pb))
+        if key in seen:
+            return
+        seen.add(key)
+        pairs.append((int(rank), int(pa), int(pb)))
+
+    pa = _angle_point_id_from_ref(a, a_ref)
+    pb = _angle_point_id_from_ref(b, b_ref)
+    if pa in (1, 2) and pb in (1, 2):
+        add(pa, pb, -1)
+
+    try:
+        # If segments share a vertex, that vertex is the user's natural angle
+        # attachment and must win over Sketcher's free line-line choice.
+        for pa in (1, 2):
+            posa = _point_position(a, pa)
+            if posa is None:
+                continue
+            for pb in (1, 2):
+                posb = _point_position(b, pb)
+                if posb is not None and _distance2(posa, posb) <= 1e-10:
+                    add(pa, pb, 0)
+    except Exception:
+        pass
+
+    intersection = _line_support_intersection(a, b)
+    if intersection is not None:
+        try:
+            endpoint_pairs = []
+            for pa in (1, 2):
+                posa = _point_position(a, pa)
+                if posa is None:
+                    continue
+                for pb in (1, 2):
+                    posb = _point_position(b, pb)
+                    if posb is None:
+                        continue
+                    endpoint_pairs.append((_distance2(posa, intersection) + _distance2(posb, intersection), pa, pb))
+            endpoint_pairs.sort()
+            for _distance, pa, pb in endpoint_pairs:
+                add(pa, pb, 1)
+        except Exception:
+            pass
+
+    for pa in (1, 2):
+        for pb in (1, 2):
+            add(pa, pb, 2)
+
+    pairs.sort()
+    return [(pa, pb) for _rank, pa, pb in pairs]
+
+
 def _add_user_angle_dimension(add_protected_constraint_safe, stats, piece_map, intent):
     """Emit a protected user angle constraint between two straight segments."""
     pair = intent.get("piece_pair")
@@ -2342,6 +3140,10 @@ def _add_user_angle_dimension(add_protected_constraint_safe, stats, piece_map, i
             pair = (int(ordered_pieces[0]), int(ordered_pieces[1]))
         except Exception:
             pass
+
+    rng = intent.get("range") or {}
+    a_ref = rng.get("start") or {}
+    b_ref = rng.get("end") or {}
 
     a = piece_map.get(int(pair[0]))
     b = piece_map.get(int(pair[1]))
@@ -2363,17 +3165,19 @@ def _add_user_angle_dimension(add_protected_constraint_safe, stats, piece_map, i
         stats["skipped_dimensions"] += 1
         return False
 
-    candidates = [
+    candidates = []
+
+    # Prefer endpoint-explicit constraints: they preserve the visual/user
+    # attachment of the angle.  The compact line-line form is only a fallback,
+    # because FreeCAD is otherwise free to choose another attachment.
+    for pa, pb in _angle_endpoint_pair_candidates(a, b, a_ref=a_ref, b_ref=b_ref):
+        candidates.append(("Angle", a["index"], pa, b["index"], pb, float(value)))
+        candidates.append(("Angle", b["index"], pb, a["index"], pa, float(value)))
+
+    candidates.extend([
         ("Angle", a["index"], b["index"], float(value)),
         ("Angle", b["index"], a["index"], float(value)),
-    ]
-
-    # Endpoint-explicit fallbacks.  Some Sketcher versions require endpoints
-    # for line/line angle constraints, especially for non-adjacent segments.
-    for pa in (1, 2):
-        for pb in (1, 2):
-            candidates.append(("Angle", a["index"], pa, b["index"], pb, float(value)))
-            candidates.append(("Angle", b["index"], pb, a["index"], pa, float(value)))
+    ])
 
     if _try_protected_dimension_candidates(add_protected_constraint_safe, candidates):
         stats["user_forced_angle"] += 1
@@ -2573,6 +3377,17 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         "shape_dof": -1,
         "shape_anchor_dof": -1,
         "shape_position_only": 0,
+        "master_diag_symmetry_families": 0,
+        "master_diag_symmetry_pairs": 0,
+        "master_diag_master_pieces": 0,
+        "master_diag_slave_pieces": 0,
+        "master_diag_overlap_pieces": 0,
+        "master_diag_ambiguous_pieces": 0,
+        "master_diag_path_expanded_pieces": 0,
+        "master_diag_strong_boundaries": 0,
+        "master_diag_soft_boundaries": 0,
+        "master_slave_local_skipped": 0,
+        "master_slave_symmetry_bridges": 0,
         "user_intents": 0,
         "user_intent_conflicts": 0,
         "user_intent_warnings": 0,
@@ -2602,6 +3417,14 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
             except Exception:
                 pass
         return ok
+
+    def protect_constraints_from(before_count):
+        try:
+            after_count = _constraint_count(sk)
+            for ci in range(int(before_count), int(after_count)):
+                protected_constraint_indices.add(int(ci))
+        except Exception:
+            pass
 
     try:
         add_protected_constraint_safe.sketch = sk
@@ -2668,6 +3491,45 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
     junctions = list(connected_junctions(geom_meta, tol_join))
     segments = [meta for meta in geom_meta if meta.get("type") == "segment"]
     dist_tol = max(float(tol_join) * 0.25, 1e-6)
+    master_diag = _diagnose_master_slave_strategy(
+        geom_meta,
+        user_intents,
+        endpoint_pairs,
+        junctions,
+        tol_join,
+        stats,
+    )
+    master_ids = set(int(i) for i in (master_diag.get("master_ids") or set()))
+    slave_ids = set(int(i) for i in (master_diag.get("slave_ids") or set()))
+    master_dominant = master_diag.get("dominant") or {}
+    master_dominant_center = master_dominant.get("center") if master_dominant.get("kind") == "center_arbitrary" else None
+
+    def meta_is_slave(meta):
+        return _meta_stable_id(meta) in slave_ids
+
+    def meta_is_master(meta):
+        return _meta_stable_id(meta) in master_ids
+
+    def relation_is_slave_only(*metas):
+        ids = [_meta_stable_id(meta) for meta in metas]
+        return bool(ids) and all(mid in slave_ids for mid in ids) and not any(mid in master_ids for mid in ids)
+
+    def symmetry_pair_is_master_slave(meta_a, meta_b):
+        ida = _meta_stable_id(meta_a)
+        idb = _meta_stable_id(meta_b)
+        return (ida in master_ids and idb in slave_ids) or (idb in master_ids and ida in slave_ids)
+
+    def center_matches_master_dominant(center):
+        if master_dominant_center is None or center is None:
+            return False
+        try:
+            return math.hypot(
+                float(center[0]) - float(master_dominant_center[0]),
+                float(center[1]) - float(master_dominant_center[1]),
+            ) <= max(float(tol_join), 1e-5)
+        except Exception:
+            return False
+
     # Points in this set are reserved from automatic symmetry.  Keep it narrow:
     # tangency is a local construction intent tied to a junction point, while
     # collinearity and parallelism are better protected by their own constraints
@@ -2706,6 +3568,10 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
             return False
         if has_directional_user_intent(user_intents, cur, nxt):
             return False
+        if relation_is_slave_only(cur, nxt):
+            stats["master_slave_local_skipped"] += 1
+            stats["skipped_relations"] += 1
+            return False
         key = tuple(sorted((int(cur["index"]), int(nxt["index"]))))
         if key in primitive_tangent_pairs:
             reserve_tangent_cluster_points((cur, cur_point), (nxt, nxt_point))
@@ -2725,12 +3591,18 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
 
     groups = group_collinear_segments(segments, dist_tol=dist_tol)
     for group in groups:
-        ref = _choose_collinear_reference(group)
+        active_group = [meta for meta in group if not meta_is_slave(meta)]
+        if len(active_group) < 2:
+            if len(group) >= 2:
+                stats["master_slave_local_skipped"] += max(1, len(group) - 1)
+                stats["skipped_relations"] += max(1, len(group) - 1)
+            continue
+        ref = _choose_collinear_reference(active_group)
         stats["collinear_groups"] += 1
-        stats["collinear_members"] += len(group)
+        stats["collinear_members"] += len(active_group)
 
         emitted_for_group = 0
-        for child in group:
+        for child in active_group:
             if child is ref:
                 continue
             if has_directional_user_intent(user_intents, child, ref):
@@ -2747,6 +3619,11 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         except Exception:
             max_length = 0.0
         strong = [meta for meta in group if _strong_parallel_candidate(meta, max_length)]
+        skipped_slave = len([meta for meta in strong if meta_is_slave(meta)])
+        if skipped_slave:
+            stats["master_slave_local_skipped"] += int(skipped_slave)
+            stats["skipped_relations"] += int(skipped_slave)
+        strong = [meta for meta in strong if not meta_is_slave(meta)]
         if len(strong) < 2:
             continue
         ref = _choose_collinear_reference(strong)
@@ -2766,7 +3643,6 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
                 stats["parallel_links"] += 1
         if emitted_for_group:
             stats["parallel_groups"] += 1
-
 
     # 3) Symmetry: conservative axis passes.  Work on endpoint clusters so
     # coincident duplicates do not all receive their own symmetry constraint.
@@ -2810,7 +3686,11 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
                     stats["symmetry_skipped_by_cluster"] += 1
                 stats["skipped_relations"] += 1
                 continue
+            before_count = _constraint_count(sk)
             if add_constraint_safe("Symmetric", left["index"], left_point, right["index"], right_point, -2):
+                if symmetry_pair_is_master_slave(left, right):
+                    protect_constraints_from(before_count)
+                    stats["master_slave_symmetry_bridges"] += 1
                 symmetry_y_count += 1
                 stats["symmetry_y"] += 1
                 mark_symmetry_pair(left, left_point, right, right_point)
@@ -2827,7 +3707,11 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
                     stats["symmetry_skipped_by_cluster"] += 1
                 stats["skipped_relations"] += 1
                 continue
+            before_count = _constraint_count(sk)
             if add_constraint_safe("Symmetric", top["index"], top_point, bottom["index"], bottom_point, -1):
+                if symmetry_pair_is_master_slave(top, bottom):
+                    protect_constraints_from(before_count)
+                    stats["master_slave_symmetry_bridges"] += 1
                 symmetry_x_count += 1
                 stats["symmetry_x"] += 1
                 mark_symmetry_pair(top, top_point, bottom, bottom_point)
@@ -2849,7 +3733,11 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
                 origin_index = _get_or_create_locked_origin_point(sk, Sketcher, stats, exported_constraint_indices)
                 if origin_index is None:
                     break
+            before_count = _constraint_count(sk)
             if _add_central_symmetry_safe(sk, Sketcher, stats, exported_constraint_indices, a, a_point, b, b_point, origin_index):
+                if symmetry_pair_is_master_slave(a, b):
+                    protect_constraints_from(before_count)
+                    stats["master_slave_symmetry_bridges"] += 1
                 symmetry_center_count += 1
                 stats["symmetry_center"] += 1
                 mark_symmetry_pair(a, a_point, b, b_point)
@@ -2943,7 +3831,11 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
                         stats["symmetry_skipped_by_cluster"] += 1
                     stats["skipped_relations"] += 1
                     continue
+                before_count = _constraint_count(sk)
                 if add_constraint_safe("Symmetric", meta_a["index"], point_a, meta_b["index"], point_b, axis_index):
+                    if symmetry_pair_is_master_slave(meta_a, meta_b):
+                        protect_constraints_from(before_count)
+                        stats["master_slave_symmetry_bridges"] += 1
                     arbitrary_axis_constraint_count += 1
                     kept_for_axis += 1
                     kept_weight += float(relevance)
@@ -3005,6 +3897,47 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
                 useful.append((meta_a, point_a, meta_b, point_b, float(relevance)))
         return useful
 
+    def center_pair_is_endpoint_transport_redundant(pair, all_pairs):
+        meta_a, point_a, meta_b, point_b, _relevance = pair
+        if int(point_a) != 3 or int(point_b) != 3:
+            return False
+        if meta_a.get("type") != "arc" or meta_b.get("type") != "arc":
+            return False
+        if not symmetry_pair_is_master_slave(meta_a, meta_b):
+            return False
+
+        def close_point(a, b):
+            try:
+                return _distance2(a, b) <= max(float(symmetry_tol) * float(symmetry_tol), 1e-10)
+            except Exception:
+                return False
+
+        transported_a_endpoints = set()
+        for endpoint_a in (1, 2):
+            pos_a = _point_position(meta_a, endpoint_a)
+            if pos_a is None:
+                continue
+            for endpoint_b in (1, 2):
+                pos_b = _point_position(meta_b, endpoint_b)
+                if pos_b is None:
+                    continue
+                for other_a, other_point_a, other_b, other_point_b, _other_relevance in all_pairs:
+                    if int(other_point_a) == 3 or int(other_point_b) == 3:
+                        continue
+                    other_pos_a = _point_position(other_a, other_point_a)
+                    other_pos_b = _point_position(other_b, other_point_b)
+                    if other_pos_a is None or other_pos_b is None:
+                        continue
+                    if (
+                        (close_point(other_pos_a, pos_a) and close_point(other_pos_b, pos_b))
+                        or (close_point(other_pos_a, pos_b) and close_point(other_pos_b, pos_a))
+                    ):
+                        transported_a_endpoints.add(int(endpoint_a))
+                        break
+                if int(endpoint_a) in transported_a_endpoints:
+                    break
+        return len(transported_a_endpoints) >= 2
+
     if _arbitrary_symmetry_centers_enabled():
         # If explicit origin central symmetry is disabled, (0,0) must remain a
         # valid arbitrary-center candidate.  Disabling the dedicated mode means
@@ -3015,6 +3948,69 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         ))
         stats["arbitrary_center_candidates"] = len(remaining_candidates)
         stats["arbitrary_center_pairs"] = sum(int(c.get("score", 0)) for c in remaining_candidates)
+        emitted_arc_center_distance_keys = set()
+        center_support_alignment_added = False
+
+        def arc_center_distance_key(meta_a, meta_b):
+            centers = []
+            for meta in (meta_a, meta_b):
+                center = meta.get("center")
+                if center is None:
+                    return None
+                centers.append((round(float(center[0]), 6), round(float(center[1]), 6)))
+            return tuple(sorted(centers))
+
+        def add_arc_center_distance(meta_a, meta_b):
+            key = arc_center_distance_key(meta_a, meta_b)
+            if key is None or key in emitted_arc_center_distance_keys:
+                return False
+            pa = _point_position(meta_a, 3)
+            pb = _point_position(meta_b, 3)
+            if pa is None or pb is None:
+                return False
+            value = math.hypot(float(pb[0]) - float(pa[0]), float(pb[1]) - float(pa[1]))
+            if value <= max(float(tol_join), 1e-5):
+                return False
+            if add_protected_constraint_safe("Distance", meta_a["index"], 3, meta_b["index"], 3, float(value)):
+                emitted_arc_center_distance_keys.add(key)
+                return True
+            return False
+
+        def segment_distance_to_point(meta, point):
+            try:
+                a = meta.get("start")
+                b = meta.get("end")
+                px, py = float(point[0]), float(point[1])
+                ax, ay = float(a[0]), float(a[1])
+                bx, by = float(b[0]), float(b[1])
+                vx, vy = bx - ax, by - ay
+                den = vx * vx + vy * vy
+                if den <= 1e-12:
+                    return math.hypot(px - ax, py - ay)
+                t = max(0.0, min(1.0, ((px - ax) * vx + (py - ay) * vy) / den))
+                qx, qy = ax + t * vx, ay + t * vy
+                return math.hypot(px - qx, py - qy)
+            except Exception:
+                return 1e100
+
+        def add_center_support_alignment(center_index, center):
+            candidates = []
+            for meta in segments:
+                support_distance = _line_distance_to_point(meta, center)
+                if support_distance is None or support_distance > max(float(tol_join), 1e-5):
+                    continue
+                candidates.append((
+                    0 if meta_is_master(meta) else 1,
+                    segment_distance_to_point(meta, center),
+                    _meta_span_weight(meta),
+                    _meta_stable_id(meta),
+                    meta,
+                ))
+            if not candidates:
+                return False
+            candidates.sort()
+            _rank, _distance, _weight, _mid, meta = candidates[0]
+            return add_protected_constraint_safe("PointOnObject", int(center_index), 1, int(meta["index"]))
 
         while remaining_candidates:
             scored = []
@@ -3050,6 +4046,9 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
                 remaining_candidates.pop(idx)
                 stats["arbitrary_center_skipped_by_competition"] += 1
                 continue
+            center_is_master_dominant = center_matches_master_dominant(candidate.get("center"))
+            if center_is_master_dominant and not center_support_alignment_added:
+                center_support_alignment_added = add_center_support_alignment(center_index, candidate.get("center"))
 
             # v1.3.8: arbitrary-center detection can legitimately find many
             # compatible pairs for the same center.  Emitting all of them often
@@ -3058,11 +4057,20 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
             # Keep only the best local pairs, capped by the configured minimum
             # score.  The minimum score is therefore both the acceptance
             # threshold and the initial emission budget.
+            emit_budget = len(useful_pairs) if center_is_master_dominant else max(1, int(min_sym_score))
+            center_distance_pairs = []
+            filtered_pairs = []
+            for pair in useful_pairs:
+                if center_pair_is_endpoint_transport_redundant(pair, useful_pairs):
+                    center_distance_pairs.append(pair)
+                else:
+                    filtered_pairs.append(pair)
+            useful_pairs = filtered_pairs
             useful_pairs_to_emit = sorted(
                 useful_pairs,
                 key=lambda item: (float(item[4]), _point_role_weight(item[0], item[1]) + _point_role_weight(item[2], item[3])),
                 reverse=True,
-            )[:max(1, int(min_sym_score))]
+            )[:max(1, int(emit_budget))]
 
             kept_for_center = 0
             kept_weight = 0.0
@@ -3076,14 +4084,21 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
                         stats["symmetry_skipped_by_cluster"] += 1
                     stats["skipped_relations"] += 1
                     continue
+                before_count = _constraint_count(sk)
                 if _add_central_symmetry_safe(
                     sk, Sketcher, stats, exported_constraint_indices,
                     meta_a, point_a, meta_b, point_b, center_index
                 ):
+                    if center_is_master_dominant or symmetry_pair_is_master_slave(meta_a, meta_b):
+                        protect_constraints_from(before_count)
+                        stats["master_slave_symmetry_bridges"] += 1
                     arbitrary_center_constraint_count += 1
                     kept_for_center += 1
                     kept_weight += float(relevance)
                     mark_symmetry_pair(meta_a, point_a, meta_b, point_b)
+
+            for meta_a, _point_a, meta_b, _point_b, _relevance in center_distance_pairs:
+                add_arc_center_distance(meta_a, meta_b)
 
             if kept_for_center > 0:
                 stats["arbitrary_center_selected"] += 1
@@ -3122,6 +4137,12 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
     circle_count = 0
     for group in circle_groups:
         ref = _choose_circle_reference(group)
+        if relation_is_slave_only(*group):
+            skipped = max(1, len(group) - 1)
+            stats["master_slave_local_skipped"] += skipped
+            stats["skipped_relations"] += skipped
+            continue
+        add_circle_constraint = add_protected_constraint_safe if any(meta_is_master(meta) for meta in group) else add_constraint_safe
         stats["circle_groups"] += 1
         stats["circle_members"] += len(group)
         for meta in group:
@@ -3129,7 +4150,7 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         for child in group:
             if child is ref:
                 continue
-            if _add_same_circle_to_reference(add_constraint_safe, child, ref):
+            if _add_same_circle_to_reference(add_circle_constraint, child, ref):
                 circle_count += 1
 
     # 5) Local smoothness: only add tangent when neighbouring path elements
@@ -3156,6 +4177,10 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         if are_tangent_vectors(tangent_vec_end(cur), tangent_vec_start(nxt)):
             if has_directional_user_intent(user_intents, cur, nxt):
                 stats["auto_skipped_by_user_intent"] += 1
+                stats["skipped_relations"] += 1
+                continue
+            if relation_is_slave_only(cur, nxt):
+                stats["master_slave_local_skipped"] += 1
                 stats["skipped_relations"] += 1
                 continue
             if add_constraint_safe("Tangent", cur["index"], nxt["index"]):
