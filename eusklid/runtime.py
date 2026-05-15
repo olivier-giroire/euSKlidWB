@@ -27,6 +27,15 @@ from .math2d import normalize
 import FreeCAD as App
 import FreeCADGui as Gui
 
+__all__ = [
+    "get_data",
+    "set_data",
+    "create_sketch",
+    "get_or_create_euclid_sketch",
+    "reset_interaction_state",
+]
+
+
 def get_active_plane(sketch_obj):
     return get_data(sketch_obj).plane
 
@@ -77,4 +86,3 @@ def commit_circle(sketch_obj, center, radius, construction=True, mode="generic-c
     except Exception:
         pass
     return sketch_obj
-

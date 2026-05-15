@@ -1,4 +1,17 @@
 
+# euSKlidWB v1.3.2
+
+## Constraint export stabilization release
+
+- stabilized Path to Sketcher constraint export on strongly symmetric profiles
+- improved protection and prioritization of user constraints during desaturation
+- added `Preserve Radius` for arc user constraints
+- removed legacy `Preserve Length` support from UI, intent normalization and export
+- fixed several malformed or weak endpoint attachments for user tangent, angle and distance constraints
+- synchronized Sketcher blocked geometry flags with exported lock constraints for better FreeCAD consistency
+- cleaned dead code and passed `pyflakes`, `ruff` and Python compile checks
+
+
 # euSKlidWB v1.3.1
 
 ## User constraints release

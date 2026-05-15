@@ -14,7 +14,6 @@
 # Lesser General Public License for more details.
 
 from .qt_compat import QtCore, QtWidgets
-from .plane import SketchPlane
 from .utils import parse_distance_series
 from .core.i18n import tr
 

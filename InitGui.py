@@ -73,9 +73,9 @@ class euSKlidWorkbench(Gui.Workbench):
             "euSKlid_PathEditOverloads",
             "euSKlid_PathFinishOverloadEdit",
             "euSKlid_PathPreserveTangent",
-            "euSKlid_PathPreserveLength",
             "euSKlid_PathPreserveColinearity",
             "euSKlid_PathPreserveAngle",
+            "euSKlid_PathPreserveRadius",
             "euSKlid_PathPreserveDistance",
         ])
 

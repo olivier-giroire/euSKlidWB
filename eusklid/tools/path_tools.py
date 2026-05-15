@@ -179,6 +179,39 @@ def _active_edit_sketch():
             pass
     return None
 
+
+def _refresh_exported_sketch_now(sk, doc):
+    """Force FreeCAD/Sketcher to refresh solver state after generated export."""
+    try:
+        sk.solve()
+    except Exception:
+        pass
+    try:
+        sk.touch()
+    except Exception:
+        pass
+    try:
+        doc.recompute()
+    except Exception:
+        pass
+    try:
+        sk.solve()
+    except Exception:
+        pass
+    try:
+        doc.recompute()
+    except Exception:
+        pass
+
+    try:
+        Gui.ActiveDocument.ActiveView.redraw()
+    except Exception:
+        pass
+
+
+def _refresh_exported_sketch(sk, doc):
+    _refresh_exported_sketch_now(sk, doc)
+
 _PATH_ACTIVE_OBJECTS = []
 _PATH_PREVIEW_OBJECTS = []
 _PATH_MARKER_OBJECTS = []
@@ -411,8 +444,10 @@ def _project_uv_to_piece(piece, uv):
             return {"uv": _piece_point_at_t(piece, 0.5), "t": 0.5}
         x, y = float(uv[0]), float(uv[1])
         if piece.get("type") == "segment":
-            a = piece.get("a"); b = piece.get("b")
-            ax, ay = float(a[0]), float(a[1]); bx, by = float(b[0]), float(b[1])
+            a = piece.get("a")
+            b = piece.get("b")
+            ax, ay = float(a[0]), float(a[1])
+            bx, by = float(b[0]), float(b[1])
             vx, vy = bx - ax, by - ay
             den = vx * vx + vy * vy
             t = 0.5 if den <= 1e-18 else ((x - ax) * vx + (y - ay) * vy) / den
@@ -428,7 +463,8 @@ def _project_uv_to_piece(piece, uv):
                 continue
             d = (float(p[0]) - x) ** 2 + (float(p[1]) - y) ** 2
             if best_d is None or d < best_d:
-                best_d = d; best_t = t
+                best_d = d
+                best_t = t
         return {"uv": _piece_point_at_t(piece, best_t), "t": float(best_t)}
     except Exception:
         return {"uv": _piece_point_at_t(piece, 0.5), "t": 0.5}
@@ -444,8 +480,10 @@ def _range_portions_between_points(record, start, end):
     if n <= 0:
         return []
     try:
-        i0 = int(start.get("piece")); i1 = int(end.get("piece"))
-        t0 = float(start.get("t", 0.0)); t1 = float(end.get("t", 1.0))
+        i0 = int(start.get("piece"))
+        i1 = int(end.get("piece"))
+        t0 = float(start.get("t", 0.0))
+        t1 = float(end.get("t", 1.0))
     except Exception:
         return []
 
@@ -457,17 +495,22 @@ def _range_portions_between_points(record, start, end):
             piece = pieces[idx]
             if idx == a_idx and idx == b_idx:
                 if b_t >= a_t:
-                    out.append((idx, a_t, b_t)); total += _piece_length(piece) * abs(b_t - a_t)
+                    out.append((idx, a_t, b_t))
+                    total += _piece_length(piece) * abs(b_t - a_t)
                     return out, total
                 # same piece but forward wraps around: first a_t->1 then later 0->b_t
-                out.append((idx, a_t, 1.0)); total += _piece_length(piece) * abs(1.0 - a_t)
+                out.append((idx, a_t, 1.0))
+                total += _piece_length(piece) * abs(1.0 - a_t)
             elif idx == a_idx:
-                out.append((idx, a_t, 1.0)); total += _piece_length(piece) * abs(1.0 - a_t)
+                out.append((idx, a_t, 1.0))
+                total += _piece_length(piece) * abs(1.0 - a_t)
             elif idx == b_idx:
-                out.append((idx, 0.0, b_t)); total += _piece_length(piece) * abs(b_t - 0.0)
+                out.append((idx, 0.0, b_t))
+                total += _piece_length(piece) * abs(b_t - 0.0)
                 return out, total
             else:
-                out.append((idx, 0.0, 1.0)); total += _piece_length(piece)
+                out.append((idx, 0.0, 1.0))
+                total += _piece_length(piece)
             idx = (idx + 1) % n
             if idx == a_idx:
                 return out, total
@@ -695,43 +738,6 @@ def _render_tangent_overload(record, range_data, group=None):
 
 
 
-def _render_length_overload(record, range_data, group=None):
-    """Render a length overload as two explicit endpoint markers.
-
-    Length intent is represented by its two selected points. No full-entity
-    highlight is drawn, to keep the visual language distinct from collinearity
-    or tangency overloads.
-    """
-    objs = []
-    range_data = range_data or {}
-    plane = record.get("plane")
-    pieces = record.get("pieces", []) or []
-    if plane is None or not hasattr(plane, "uv_to_world") or not pieces:
-        return objs
-
-    def _uv_from_ref(ref):
-        try:
-            uv = (ref or {}).get("uv")
-            if uv is not None:
-                return (float(uv[0]), float(uv[1]))
-            pi = int((ref or {}).get("piece"))
-            t = float((ref or {}).get("t", 0.5))
-            return _piece_point_at_t(pieces[pi], t)
-        except Exception:
-            return None
-
-    start_uv = _uv_from_ref(range_data.get("start"))
-    end_uv = _uv_from_ref(range_data.get("end"))
-
-    for uv in (start_uv, end_uv):
-        marker = _make_overload_marker(plane, uv, group=group, name="euSKlidOverloadLengthPoint")
-        if marker is not None:
-            objs.append(marker)
-
-    return objs
-
-
-
 def _segment_direction_uv(piece):
     """Return a normalized segment direction in UV coordinates, or None."""
     try:
@@ -759,7 +765,7 @@ def _piece_midpoint_uv(piece):
 def _draw_colinearity_axis_glyph(record, piece_index, group=None):
     """Draw a small double axial mark on a segment.
 
-    It deliberately differs from tangent and length overloads:
+    It deliberately differs from tangent overloads:
     - the segment itself is highlighted;
     - a compact double slash/axis glyph is drawn near its midpoint.
     """
@@ -1023,6 +1029,47 @@ def _render_angle_overload(record, pieces, group=None):
                 objs.append(obj)
 
         objs.extend(_draw_angle_arc_glyph(record, uniq[0], uniq[1], group=group))
+    except Exception:
+        pass
+    return objs
+
+
+def _render_radius_overload(record, pieces, group=None):
+    """Render Preserve Radius on circular path pieces."""
+    objs = []
+    try:
+        plane = record.get("plane")
+        record_pieces = record.get("pieces", []) or []
+        if plane is None or not hasattr(plane, "uv_to_world"):
+            return objs
+        for pi in pieces or []:
+            try:
+                piece = record_pieces[int(pi)]
+                if piece.get("type") != "arc":
+                    continue
+                obj = _draw_overload_piece(record, int(pi), group=group)
+                if obj is not None:
+                    objs.append(obj)
+                center = _piece_center_uv(piece)
+                edge = _piece_point_at_t(piece, 0.5)
+                if center is not None and edge is not None:
+                    color, width, alpha = _path_overload_style()
+                    radius = _make_overload_polyline(
+                        plane,
+                        [center, edge],
+                        color=color,
+                        width=max(width + 1.0, 4.0),
+                        transparency=alpha,
+                        name="euSKlidOverloadRadiusLine",
+                        group=group,
+                    )
+                    if radius is not None:
+                        objs.append(radius)
+                    marker = _make_overload_marker(plane, center, group=group, name="euSKlidOverloadRadiusCenter")
+                    if marker is not None:
+                        objs.append(marker)
+            except Exception:
+                pass
     except Exception:
         pass
     return objs
@@ -1649,7 +1696,6 @@ def _draw_overload_range(record, range_data, group=None):
 
 def _draw_overload_piece(record, piece_index, group=None):
     try:
-        piece = (record.get("pieces", []) or [])[int(piece_index)]
         portions = [(int(piece_index), 0.0, 1.0)]
         objs = _draw_overload_portions(record, portions, group=group)
         return objs[0] if objs else None
@@ -1666,12 +1712,12 @@ def _draw_overloads_for_record(record, index, group=None):
             if ov.get("range"):
                 if str(ov.get("kind", "")) == "tangent":
                     objs.extend(_render_tangent_overload(record, ov.get("range", {}) or {}, group=group))
-                elif str(ov.get("kind", "")) == "length":
-                    objs.extend(_render_length_overload(record, ov.get("range", {}) or {}, group=group))
                 elif str(ov.get("kind", "")) in ("colinearity", "collinearity"):
                     objs.extend(_render_colinearity_overload(record, ov.get("pieces", []) or [], group=group))
                 elif str(ov.get("kind", "")) == "angle":
                     objs.extend(_render_angle_overload(record, ov.get("pieces", []) or [], group=group))
+                elif str(ov.get("kind", "")) == "radius":
+                    objs.extend(_render_radius_overload(record, ov.get("pieces", []) or [], group=group))
                 elif str(ov.get("kind", "")) == "distance":
                     objs.extend(_render_distance_overload(record, ov.get("range", {}) or {}, group=group))
                 else:
@@ -1682,6 +1728,9 @@ def _draw_overloads_for_record(record, index, group=None):
                 continue
             if str(ov.get("kind", "")) == "angle":
                 objs.extend(_render_angle_overload(record, ov.get("pieces", []) or [], group=group))
+                continue
+            if str(ov.get("kind", "")) == "radius":
+                objs.extend(_render_radius_overload(record, ov.get("pieces", []) or [], group=group))
                 continue
             for pi in ov.get("pieces", []) or []:
                 obj = _draw_overload_piece(record, int(pi), group=group)
@@ -3090,7 +3139,7 @@ class PathSession:
         except Exception:
             pass
         _CLOSED_PATHS.append(record)
-        objs = _draw_closed_path_record(record, path_index)
+        _draw_closed_path_record(record, path_index)
         _sync_closed_paths_to_sketch(self.sketch_obj)
         clear_path_active()
         clear_path_preview()
@@ -3418,7 +3467,7 @@ class PathSession:
 
         _write_export_tag(sk, exported_geometry_indices, exported_constraint_indices, label="path")
 
-        doc.recompute()
+        _refresh_exported_sketch(sk, doc)
         return sk
 
 
@@ -3998,107 +4047,6 @@ def _selected_item_path_piece(item):
         return None, None, None
 
 
-def _add_length_overload_for_pieces(selected, interactive=False):
-    """Store a protected length overload from two clicked points."""
-    if len(selected) != 2:
-        elog.help("Select exactly two points on the same opened contour, then run Preserve Length.")
-        return False
-
-    norm = [_selected_item_path_piece(item) for item in selected]
-    path_ids = {item[0] for item in norm if item[0] is not None}
-    if len(path_ids) != 1:
-        QtWidgets.QMessageBox.warning(None, "euSKlid", "Selected points must belong to the same Path.")
-        return False
-
-    path_id = norm[0][0]
-    record_idx, record = _find_closed_path_record(path_id)
-    if record is None:
-        QtWidgets.QMessageBox.warning(None, "euSKlid", "Cannot find the selected Path record.")
-        return False
-
-    pieces = [int(norm[0][1]), int(norm[1][1])]
-    try:
-        max_index = len(record.get("pieces", []) or []) - 1
-        if pieces[0] < 0 or pieces[1] < 0 or pieces[0] > max_index or pieces[1] > max_index:
-            QtWidgets.QMessageBox.warning(None, "euSKlid", "Selected Path piece index is invalid.")
-            return False
-    except Exception:
-        pass
-
-    try:
-        record_pieces = record.get("pieces", []) or []
-        n_pieces = len(record_pieces)
-
-        same_piece = int(pieces[0]) == int(pieces[1])
-        adjacent_forward = n_pieces > 0 and ((int(pieces[0]) + 1) % n_pieces) == int(pieces[1])
-        adjacent_backward = n_pieces > 0 and ((int(pieces[1]) + 1) % n_pieces) == int(pieces[0])
-
-        if same_piece:
-            # Preserve Length on a single clicked segment: preserve the real
-            # segment endpoints, not the clicked/projected midpoint positions.
-            target_piece = int(pieces[0])
-            start_ref = {"piece": target_piece, "uv": None, "t": 0.0}
-            end_ref = {"piece": target_piece, "uv": None, "t": 1.0}
-            portions = [(target_piece, 0.0, 1.0)]
-            range_pieces = [target_piece]
-        elif adjacent_forward:
-            # Common UX case: click the previous segment then the segment whose
-            # length must be fixed.  Store/render the full second segment.
-            target_piece = int(pieces[1])
-            start_ref = {"piece": target_piece, "uv": None, "t": 0.0}
-            end_ref = {"piece": target_piece, "uv": None, "t": 1.0}
-            portions = [(target_piece, 0.0, 1.0)]
-            range_pieces = [target_piece]
-        elif adjacent_backward:
-            # Symmetric case: click the target segment then its previous/next
-            # neighbour.  Keep the first selected segment as the target.
-            target_piece = int(pieces[0])
-            start_ref = {"piece": target_piece, "uv": None, "t": 0.0}
-            end_ref = {"piece": target_piece, "uv": None, "t": 1.0}
-            portions = [(target_piece, 0.0, 1.0)]
-            range_pieces = [target_piece]
-        else:
-            p0 = _project_uv_to_piece(record_pieces[pieces[0]], norm[0][2])
-            p1 = _project_uv_to_piece(record_pieces[pieces[1]], norm[1][2])
-            start_ref = {"piece": int(pieces[0]), "uv": p0.get("uv"), "t": float(p0.get("t", 0.0))}
-            end_ref = {"piece": int(pieces[1]), "uv": p1.get("uv"), "t": float(p1.get("t", 1.0))}
-            portions = _range_portions_between_points(record, start_ref, end_ref)
-            range_pieces = _pieces_from_portions(portions)
-    except Exception:
-        start_ref = {"piece": int(pieces[0]), "uv": None, "t": 0.0}
-        end_ref = {"piece": int(pieces[1]), "uv": None, "t": 1.0}
-        portions = []
-        range_pieces = list(pieces)
-
-    overload = {
-        "kind": "length",
-        "pieces": list(range_pieces or pieces),
-        "range": {
-            "mode": "endpoints",
-            "start": start_ref,
-            "end": end_ref,
-            "portions": list(portions or []),
-        },
-        "strength": "protected_user_intent",
-        "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
-    }
-
-    record.setdefault("overloads", []).append(overload)
-    _sync_closed_paths_to_sketch()
-
-    try:
-        record_idx, record = _find_closed_path_record(path_id)
-        group = ensure_path_instance_group(App.ActiveDocument, path_id=record.get("id") or path_id, label=record.get("label") or path_id)
-        drawn = _render_length_overload(record, overload.get("range", {}) or {}, group=group)
-        _track_closed_path_objects(drawn, path_id=record.get("id") or path_id)
-        App.ActiveDocument.recompute()
-    except Exception:
-        pass
-
-    App.Console.PrintMessage("euSKlid Path: length overload preserved.\n")
-    return True
-
-
 def _add_tangent_overload_for_pieces(selected, interactive=False):
     """Store a protected tangent overload for the shortest user-selected path range."""
     if len(selected) != 2:
@@ -4368,6 +4316,69 @@ def _add_angle_overload_for_pieces(selected, interactive=False):
 
 
 
+def _add_radius_overload_for_pieces(selected, interactive=False):
+    """Store a protected radius overload on one selected circular Path piece."""
+    if len(selected) != 1:
+        elog.help("Select exactly one arc on the opened contour, then run Preserve Radius.")
+        return False
+
+    path_id, piece_index, _uv = _selected_item_path_piece(selected[0])
+    if path_id is None or piece_index is None:
+        QtWidgets.QMessageBox.warning(None, "euSKlid", "Selected arc must belong to a Path.")
+        return False
+
+    record_idx, record = _find_closed_path_record(path_id)
+    if record is None:
+        QtWidgets.QMessageBox.warning(None, "euSKlid", "Cannot find the selected Path record.")
+        return False
+
+    try:
+        piece_index = int(piece_index)
+        piece = (record.get("pieces", []) or [])[piece_index]
+        if piece.get("type") != "arc":
+            QtWidgets.QMessageBox.warning(None, "euSKlid", "Preserve Radius currently applies to arcs only.")
+            return False
+        value = abs(float(piece.get("radius")))
+        if value <= 0.0:
+            QtWidgets.QMessageBox.warning(None, "euSKlid", "Selected arc radius is invalid.")
+            return False
+    except Exception:
+        QtWidgets.QMessageBox.warning(None, "euSKlid", "Selected Path arc is invalid.")
+        return False
+
+    if _overload_exists(record, "radius", [piece_index]):
+        QtWidgets.QMessageBox.information(None, "euSKlid", "This radius overload already exists.")
+        return True
+
+    overload = {
+        "kind": "radius",
+        "pieces": [int(piece_index)],
+        "range": {
+            "mode": "arc_radius",
+            "piece": int(piece_index),
+            "value": float(value),
+        },
+        "strength": "protected_user_intent",
+        "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+
+    record.setdefault("overloads", []).append(overload)
+    _sync_closed_paths_to_sketch()
+
+    try:
+        record_idx, record = _find_closed_path_record(path_id)
+        group = ensure_path_instance_group(App.ActiveDocument, path_id=record.get("id") or path_id, label=record.get("label") or path_id)
+        drawn = _render_radius_overload(record, overload.get("pieces", []) or [], group=group)
+        _track_closed_path_objects(drawn, path_id=record.get("id") or path_id)
+        App.ActiveDocument.recompute()
+    except Exception:
+        pass
+
+    App.Console.PrintMessage("euSKlid Path: radius overload preserved.\n")
+    return True
+
+
+
 def _add_distance_overload_for_pieces(selected, interactive=False):
     """Store a protected distance overload between two clicked Path references."""
     if len(selected) != 2:
@@ -4472,112 +4483,6 @@ def _add_distance_overload_for_pieces(selected, interactive=False):
         App.Console.PrintMessage("euSKlid Path: distance overload preserved.\n")
 
     return True
-
-
-class _LengthOverloadSelectionObserver:
-    def __init__(self):
-        self.selected = []
-        self.seen = set()
-
-    def _parse_payload(self, *args):
-        if len(args) >= 4:
-            return args[0], args[1], args[3]
-        if len(args) >= 2:
-            return args[0], args[1], None
-        return None, None, None
-
-    def addSelection(self, *args):
-        try:
-            doc_name, obj_name, hit_world = self._parse_payload(*args)
-            obj = None
-            try:
-                doc = App.getDocument(str(doc_name)) if doc_name else App.ActiveDocument
-                obj = doc.getObject(str(obj_name)) if doc is not None and obj_name else None
-            except Exception:
-                obj = None
-            item = _object_closed_path_piece(obj)
-            if item is None:
-                try:
-                    Gui.Selection.clearSelection()
-                except Exception:
-                    pass
-                App.Console.PrintMessage("euSKlid Path: Preserve Length accepts only closed Path pieces.\n")
-                return
-            click_uv = None
-            try:
-                record_idx, record = _find_closed_path_record(item[0])
-                plane = record.get("plane") if record is not None else None
-                if hit_world is not None and plane is not None and hasattr(plane, "world_to_uv"):
-                    click_uv = plane.world_to_uv((float(hit_world.x), float(hit_world.y), float(hit_world.z)))
-            except Exception:
-                click_uv = None
-            try:
-                record_idx, record = _find_closed_path_record(item[0])
-                semantic = _distance_selection_kind(record, int(item[1]), click_uv)
-            except Exception:
-                semantic = {
-                    "kind": "segment",
-                    "piece": int(item[1]),
-                    "uv": click_uv,
-                    "t": 0.5,
-                }
-
-            sel_item = {
-                "path_id": item[0],
-                "piece": int(item[1]),
-                "uv": semantic.get("uv"),
-                "object": item[2],
-                "kind": semantic.get("kind"),
-                "t": semantic.get("t", 0.5),
-            }
-            key = (item[0], int(item[1]), round(float(click_uv[0]), 7) if click_uv is not None else None, round(float(click_uv[1]), 7) if click_uv is not None else None)
-            if key in self.seen:
-                try:
-                    Gui.Selection.clearSelection()
-                except Exception:
-                    pass
-                return
-            if self.selected and item[0] != _selected_item_path_piece(self.selected[0])[0]:
-                QtWidgets.QMessageBox.warning(None, "euSKlid", "Selected points must belong to the same Path.")
-                self.stop(clear=True)
-                return
-            self.seen.add(key)
-            self.selected.append(sel_item)
-            try:
-                App.Console.PrintMessage("euSKlid Path: Preserve Length point %d/2 selected.\n" % len(self.selected))
-            except Exception:
-                pass
-            try:
-                Gui.Selection.clearSelection()
-            except Exception:
-                pass
-            if len(self.selected) >= 2:
-                _add_length_overload_for_pieces(self.selected[:2], interactive=True)
-                self.stop(clear=False)
-        except Exception as exc:
-            App.Console.PrintError("euSKlid Path: Preserve Length selection error: %s\n" % str(exc))
-            self.stop(clear=True)
-
-    def removeSelection(self, *args):
-        pass
-
-    def setSelection(self, *args):
-        pass
-
-    def clearSelection(self, *args):
-        pass
-
-    def stop(self, clear=False):
-        global _ACTIVE_OVERLOAD_SESSION
-        try:
-            Gui.Selection.removeObserver(self)
-        except Exception:
-            pass
-        if _ACTIVE_OVERLOAD_SESSION is self:
-            _ACTIVE_OVERLOAD_SESSION = None
-        if clear:
-            self.selected = []
-            self.seen = set()
 
 
 class _TangentOverloadSelectionObserver:
@@ -4904,6 +4809,68 @@ class _AngleOverloadSelectionObserver:
 
 
 
+class _RadiusOverloadSelectionObserver:
+    def _parse_payload(self, *args):
+        if len(args) >= 2:
+            return args[0], args[1]
+        return None, None
+
+    def addSelection(self, *args):
+        try:
+            doc_name, obj_name = self._parse_payload(*args)
+            obj = None
+            try:
+                doc = App.getDocument(str(doc_name)) if doc_name else App.ActiveDocument
+                obj = doc.getObject(str(obj_name)) if doc is not None and obj_name else None
+            except Exception:
+                obj = None
+            item = _object_closed_path_piece(obj)
+            if item is None:
+                try:
+                    Gui.Selection.clearSelection()
+                except Exception:
+                    pass
+                App.Console.PrintMessage("euSKlid Path: Preserve Radius accepts only closed Path arcs.\n")
+                return
+            selected = [{"path_id": item[0], "piece": int(item[1]), "uv": None, "object": item[2]}]
+            self.stop(clear=True)
+            _add_radius_overload_for_pieces(selected, interactive=True)
+        except Exception as e:
+            try:
+                self.stop(clear=True)
+            except Exception:
+                pass
+            App.Console.PrintError("euSKlid Path Preserve Radius observer error: %s\n" % str(e))
+
+    def removeSelection(self, *args):
+        pass
+
+    def setSelection(self, *args):
+        pass
+
+    def clearSelection(self, *args):
+        pass
+
+    def stop(self, clear=False):
+        global _ACTIVE_OVERLOAD_SESSION
+        try:
+            Gui.Selection.removeObserver(self)
+        except Exception:
+            pass
+        if clear:
+            try:
+                Gui.Selection.clearSelection()
+            except Exception:
+                pass
+        if _ACTIVE_OVERLOAD_SESSION is self:
+            _ACTIVE_OVERLOAD_SESSION = None
+        try:
+            Gui.updateGui()
+        except Exception:
+            pass
+
+
+
 class _DistanceOverloadSelectionObserver:
     def __init__(self):
         self.selected = []
@@ -5059,36 +5026,6 @@ def _stop_active_overload_session():
 
 
 
-def mark_selected_path_length_overload():
-    """Start an interactive tool to mark a protected length overload.
-
-    If exactly two closed Path pieces/points are already selected, the overload
-    is added immediately for compatibility. Otherwise, a selection observer waits
-    for two clicks on the opened contour pieces.
-    """
-    global _ACTIVE_OVERLOAD_SESSION
-
-    selected = _selected_closed_path_pieces()
-    if len(selected) == 2:
-        return _add_length_overload_for_pieces(selected, interactive=False)
-
-    _stop_active_overload_session()
-    try:
-        Gui.Selection.clearSelection()
-    except Exception:
-        pass
-    observer = _LengthOverloadSelectionObserver()
-    try:
-        Gui.Selection.addObserver(observer)
-        _ACTIVE_OVERLOAD_SESSION = observer
-        elog.help("Preserve Length active: click two points on closed Path pieces.")
-        return True
-    except Exception as exc:
-        App.Console.PrintError("euSKlid Path: cannot start Preserve Length: %s\n" % str(exc))
-        _ACTIVE_OVERLOAD_SESSION = None
-        return False
-
-
 def mark_selected_path_tangent_overload():
     """Start an interactive tool to mark two closed Path pieces as tangent overload.
 
@@ -5190,6 +5127,32 @@ def mark_selected_path_angle_overload():
     except Exception as e:
         _ACTIVE_OVERLOAD_SESSION = None
         App.Console.PrintError("euSKlid Path: cannot start Preserve Angle selection: %s\n" % str(e))
+        return False
+
+
+
+def mark_selected_path_radius_overload():
+    """Start an interactive tool to mark one closed Path arc as radius overload."""
+    global _ACTIVE_OVERLOAD_SESSION
+
+    selected = _selected_closed_path_pieces()
+    if len(selected) == 1:
+        return _add_radius_overload_for_pieces(selected, interactive=False)
+
+    _stop_active_overload_session()
+    try:
+        Gui.Selection.clearSelection()
+    except Exception:
+        pass
+    observer = _RadiusOverloadSelectionObserver()
+    try:
+        Gui.Selection.addObserver(observer)
+        _ACTIVE_OVERLOAD_SESSION = observer
+        elog.help("Preserve Radius active: click one closed Path arc.")
+        return True
+    except Exception as e:
+        _ACTIVE_OVERLOAD_SESSION = None
+        App.Console.PrintError("euSKlid Path: cannot start Preserve Radius selection: %s\n" % str(e))
         return False
 
 

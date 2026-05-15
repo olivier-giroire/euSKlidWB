@@ -23,12 +23,11 @@ from .controller import (
     path_finish_overload_edit,
     end_sketch,
     undo_contextual,
-    path_preserve_length_overload,
     path_preserve_colinearity_overload,
     path_preserve_angle_overload,
+    path_preserve_radius_overload,
     path_preserve_distance_overload,
 )
-from .qt_compat import QtWidgets
 from .core.i18n import tr
 
 class _BaseCmd:
@@ -128,16 +127,6 @@ class CmdPathPreserveTangent(_BaseCmd):
     def GetResources(self): return {"MenuText":tr("Preserve Tangency"),"ToolTip":tr("Preserve a tangency by selecting portions of the opened contour")}
     def Activated(self): path_preserve_tangent_overload()
 
-class CmdPathPreserveLength(_BaseCmd):
-    def Activated(self): path_preserve_length_overload()
-    def GetResources(self):
-        return {
-            "MenuText": tr("Preserve Length"),
-            "ToolTip": tr("Preserve a user-selected length overload on the opened contour")
-        }
-
-
-
 class CmdPathPreserveColinearity(_BaseCmd):
     def Activated(self): path_preserve_colinearity_overload()
     def GetResources(self):
@@ -164,6 +153,15 @@ class CmdPathPreserveDistance(_BaseCmd):
         return {
             "MenuText": tr("Preserve Distance"),
             "ToolTip": tr("Preserve a distance relation between two clicked contour references")
+        }
+
+
+class CmdPathPreserveRadius(_BaseCmd):
+    def Activated(self): path_preserve_radius_overload()
+    def GetResources(self):
+        return {
+            "MenuText": tr("Preserve Radius"),
+            "ToolTip": tr("Preserve the radius of one selected contour arc")
         }
 
 
@@ -211,9 +209,9 @@ def register_commands():
     Gui.addCommand("euSKlid_PathClose", CmdPathClose())
     Gui.addCommand("euSKlid_PathExport", CmdPathExport())
     Gui.addCommand("euSKlid_PathPreserveTangent", CmdPathPreserveTangent())
-    Gui.addCommand("euSKlid_PathPreserveLength", CmdPathPreserveLength())
     Gui.addCommand("euSKlid_PathPreserveColinearity", CmdPathPreserveColinearity())
     Gui.addCommand("euSKlid_PathPreserveAngle", CmdPathPreserveAngle())
+    Gui.addCommand("euSKlid_PathPreserveRadius", CmdPathPreserveRadius())
     Gui.addCommand("euSKlid_PathPreserveDistance", CmdPathPreserveDistance())
     Gui.addCommand("euSKlid_PathEditOverloads", CmdPathEditOverloads())
     Gui.addCommand("euSKlid_PathFinishOverloadEdit", CmdPathFinishOverloadEdit())

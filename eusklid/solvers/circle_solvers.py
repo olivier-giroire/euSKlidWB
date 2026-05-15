@@ -117,7 +117,7 @@ def build_circles_from_two_anchors_radius(a1, a2, radius):
         p = a1["point"]
         pts = []
         for s in (+1.0, -1.0):
-            lo, ld = parallel_line(k2_origin := a2["origin"], k2_dir := a2["direction"], s * r)
+            lo, ld = parallel_line(a2["origin"], a2["direction"], s * r)
             pts.extend(line_circle_intersections(lo, ld, p, r))
         pts = unique_points(pts)
         return [{"center": c, "radius": r, "mode": "2anchors-radius"} for c in pts]

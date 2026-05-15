@@ -15,7 +15,6 @@
 
 
 import FreeCAD as App
-import Part
 
 ROOT_NAME = "euSKlidRoot"
 CONTEXT_NAME = "euSKlidContext"

@@ -32,9 +32,9 @@ from .tools.path_tools import (
     undo_path_session,
     has_active_path_session,
     mark_selected_path_tangent_overload,
-    mark_selected_path_length_overload,
     mark_selected_path_colinearity_overload,
     mark_selected_path_angle_overload,
+    mark_selected_path_radius_overload,
     mark_selected_path_distance_overload,
     start_path_overload_edit,
     finish_path_overload_edit,
@@ -455,12 +455,6 @@ def path_preserve_tangent_overload():
 def path_preserve_tangent():
     return mark_selected_path_tangent_overload()
 
-def path_preserve_length_overload():
-    return mark_selected_path_length_overload()
-
-def path_preserve_length():
-    return mark_selected_path_length_overload()
-
 def path_preserve_colinearity_overload():
     return mark_selected_path_colinearity_overload()
 
@@ -472,6 +466,12 @@ def path_preserve_angle_overload():
 
 def path_preserve_angle():
     return mark_selected_path_angle_overload()
+
+def path_preserve_radius_overload():
+    return mark_selected_path_radius_overload()
+
+def path_preserve_radius():
+    return mark_selected_path_radius_overload()
 
 def path_preserve_distance_overload():
     return mark_selected_path_distance_overload()
@@ -487,4 +487,3 @@ def path_finish_overload_edit():
 
 def path_edit_overloads():
     return start_path_overload_edit()
-

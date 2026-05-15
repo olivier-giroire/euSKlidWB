@@ -41,10 +41,8 @@ from ..core.config import get_config
 from .user_intent import (
     normalize_overloads,
     validate_user_intents,
-    forced_piece_pair_intents,
     forced_piece_pair_intents_expanded,
     forced_dimension_intents,
-    has_intent_for_piece_pair,
     has_directional_user_intent,
 )
 
@@ -164,11 +162,27 @@ def _add_same_circle_to_reference(add_constraint_safe, child, ref):
     - Coincident arc centers;
     - Equal radius.
 
+    This is used only for retained support groups, typically on the master
+    side; slave-only circle groups are skipped before this helper is called.
+
     In FreeCAD Sketcher point id 3 is the center of an arc/circle geometry.
     """
     ok_center = add_constraint_safe("Coincident", child["index"], 3, ref["index"], 3)
     ok_equal = add_constraint_safe("Equal", child["index"], ref["index"])
     return bool(ok_center or ok_equal)
+
+
+def _add_same_circle_slave_support_to_reference(add_constraint_safe, child, ref):
+    """Keep slave-side arc fragments on the same circular support.
+
+    Endpoint symmetries and tangencies already transport the slave placement.
+    Adding an explicit center Coincident on top of those transported endpoints
+    can make FreeCAD's solver fail to converge on strongly symmetric sketches.
+    Equal radius preserves the circular support without introducing that center
+    redundancy.
+    """
+    return bool(add_constraint_safe("Equal", child["index"], ref["index"]))
+
 
 def _add_collinearity_to_reference(add_constraint_safe, child, ref):
     """Constrain ``child`` to the infinite support of ``ref``.
@@ -712,9 +726,12 @@ def _get_solver_dof(sk, solve_result=None):
             if parsed is not None:
                 return parsed
     elif isinstance(solve_result, (int, float)):
-        # SketchObject.solve() commonly returns the degrees of freedom in
-        # Sketcher Python workflows.  Negative values are treated as failure.
-        if int(solve_result) >= 0:
+        # FreeCAD 1.1 SketchObject.solve() returns a status code where 0 means
+        # "success", not "fully constrained".  Some older workflows returned a
+        # positive DOF count directly.  Treat 0 as unknown unless an explicit
+        # DOF property/method was found above; accepting it as a DOF lets the
+        # desaturator delete constraints while only preserving solver success.
+        if int(solve_result) > 0:
             return int(solve_result)
     else:
         parsed = _parse_dof_from_text(solve_result)
@@ -1338,6 +1355,63 @@ def _try_add_constraint(sk, Sketcher, args):
         return False
 
 
+def _set_geometry_blocked_flag(sk, geo_id):
+    """Mirror a Block/Lock constraint in Sketcher's geometry mode flags."""
+    try:
+        facades = list(sk.GeometryFacadeList)
+        facade = facades[int(geo_id)]
+        try:
+            facade.Blocked = True
+        except Exception:
+            facade.setGeometryMode("Blocked", True)
+        sk.GeometryFacadeList = facades
+        return True
+    except Exception:
+        pass
+    return False
+
+
+def _synchronize_blocked_geometry_flags(sk):
+    """Ensure Block/Lock constraints are mirrored in geometry facade flags."""
+    try:
+        constraints = list(sk.Constraints)
+        facades = list(sk.GeometryFacadeList)
+    except Exception:
+        return 0
+
+    changed = 0
+    for constraint in constraints:
+        try:
+            kind = _constraint_kind(constraint)
+        except Exception:
+            kind = ""
+        if kind not in {"Block", "Lock"}:
+            continue
+        try:
+            geo_id = int(getattr(constraint, "First"))
+        except Exception:
+            continue
+        if geo_id < 0 or geo_id >= len(facades):
+            continue
+        try:
+            if not bool(getattr(facades[geo_id], "Blocked", False)):
+                facades[geo_id].Blocked = True
+                changed += 1
+        except Exception:
+            try:
+                facades[geo_id].setGeometryMode("Blocked", True)
+                changed += 1
+            except Exception:
+                pass
+
+    if changed:
+        try:
+            sk.GeometryFacadeList = facades
+        except Exception:
+            return 0
+    return int(changed)
+
+
 def _remember_last_constraint(sk, exported_constraint_indices):
     try:
         exported_constraint_indices.add(max(0, _constraint_count(sk) - 1))
@@ -1364,6 +1438,7 @@ def _lock_point_geometry(sk, Sketcher, stats, exported_constraint_indices, geo_i
     for args in candidates[:2]:
         before = _constraint_count(sk)
         if _try_add_constraint(sk, Sketcher, args):
+            _set_geometry_blocked_flag(sk, int(geo_id))
             _remember_constraints_from(sk, before, exported_constraint_indices)
             stats["added"] += 1
             return True
@@ -1385,6 +1460,7 @@ def _lock_line_geometry(sk, Sketcher, stats, exported_constraint_indices, geo_id
     for args in (("Block", int(geo_id)), ("Lock", int(geo_id))):
         before = _constraint_count(sk)
         if _try_add_constraint(sk, Sketcher, args):
+            _set_geometry_blocked_flag(sk, int(geo_id))
             _remember_constraints_from(sk, before, exported_constraint_indices)
             stats["added"] += 1
             return True
@@ -2060,7 +2136,7 @@ def _diagnose_master_slave_strategy(geom_meta, user_intents, endpoint_pairs, jun
 
     for intent in user_intents or []:
         kind = str(intent.get("kind") or "")
-        if kind in {"length", "distance", "angle"}:
+        if kind in {"distance", "angle"}:
             value = 10.0
         elif kind in {"tangent", "colinearity"}:
             value = 7.0
@@ -2094,9 +2170,7 @@ def _diagnose_master_slave_strategy(geom_meta, user_intents, endpoint_pairs, jun
             if spans:
                 relation_span = min(spans)
 
-        if kind == "length":
-            driver_value = 10.0
-        elif kind in {"tangent", "colinearity"}:
+        if kind in {"tangent", "colinearity"}:
             driver_value = value
         elif kind == "angle":
             # Non-adjacent angles are usually measurements against a remote
@@ -2538,16 +2612,16 @@ def _meta_point_id_from_ref(meta, ref, tol=1e-5):
     return int(best_pid)
 
 
-def _segment_length_from_meta(meta):
+def _arc_radius_from_meta(meta):
     try:
-        a = meta.get("start")
-        b = meta.get("end")
-        return math.hypot(float(b[0]) - float(a[0]), float(b[1]) - float(a[1]))
-    except Exception:
-        try:
-            return segment_length(meta)
-        except Exception:
+        if meta.get("type") != "arc":
             return None
+        value = abs(float(meta.get("radius")))
+        if value > 0.0:
+            return value
+    except Exception:
+        pass
+    return None
 
 
 def _ref_position_from_meta(meta, ref):
@@ -2771,16 +2845,12 @@ def _try_protected_dimension_candidates(add_protected_constraint_safe, candidate
     return False
 
 
-def _add_user_length_dimension(add_protected_constraint_safe, stats, piece_map, intent):
-    """Emit a protected user length dimension where possible."""
+def _add_user_radius_dimension(add_protected_constraint_safe, stats, piece_map, intent):
+    """Emit a protected user radius dimension on one arc."""
     pieces = intent.get("pieces", []) or []
-
-    # Prefer the explicit overload pieces.  If an older length overload stored
-    # only range refs, use the first referenced piece.
     if not pieces:
         try:
-            rng = intent.get("range", {}) or {}
-            p = (rng.get("start") or {}).get("piece")
+            p = (intent.get("range", {}) or {}).get("piece")
             if p is not None:
                 pieces = [int(p)]
         except Exception:
@@ -2791,31 +2861,28 @@ def _add_user_length_dimension(add_protected_constraint_safe, stats, piece_map, 
         stats["skipped_dimensions"] += 1
         return False
 
-    # Preserve Length is intentionally a segment-length lock.  When a range
-    # accidentally carries more than one piece, keep the first piece: the UI
-    # path_tools side already normalizes the intended target segment.
     meta = piece_map.get(int(pieces[0]))
     if meta is None:
         stats["user_forced_skipped"] += 1
         stats["skipped_dimensions"] += 1
         return False
 
-    value = _segment_length_from_meta(meta)
+    value = _arc_radius_from_meta(meta)
     if value is None:
+        try:
+            value = abs(float((intent.get("range", {}) or {}).get("value")))
+        except Exception:
+            value = None
+    if value is None or value <= 0.0:
         stats["user_forced_skipped"] += 1
         stats["skipped_dimensions"] += 1
         return False
 
-    # FreeCAD versions differ on dimensional constructor signatures.  Try the
-    # known compact line-length form first, then explicit endpoint forms.
     candidates = [
-        ("Distance", meta["index"], float(value)),
-        ("Distance", meta["index"], 1, meta["index"], 2, float(value)),
-        ("Distance", meta["index"], 2, meta["index"], 1, float(value)),
+        ("Radius", meta["index"], float(value)),
     ]
-
     if _try_protected_dimension_candidates(add_protected_constraint_safe, candidates):
-        stats["user_forced_length"] += 1
+        stats["user_forced_radius"] += 1
         return True
 
     stats["user_forced_skipped"] += 1
@@ -3126,6 +3193,59 @@ def _angle_endpoint_pair_candidates(a, b, a_ref=None, b_ref=None):
     return [(pa, pb) for _rank, pa, pb in pairs]
 
 
+def _intent_refs_for_pair(intent, pair):
+    try:
+        rng = intent.get("range") or {}
+        refs = [rng.get("start") or {}, rng.get("end") or {}]
+        out = {}
+        for ref in refs:
+            try:
+                piece = int(ref.get("piece"))
+            except Exception:
+                continue
+            if piece in {int(pair[0]), int(pair[1])} and piece not in out:
+                out[piece] = ref
+        return out
+    except Exception:
+        return {}
+
+
+def _tangent_endpoint_pair_candidates(a, b, a_ref=None, b_ref=None):
+    pairs = []
+    seen = set()
+
+    def add(pa, pb, rank):
+        key = (int(pa), int(pb))
+        if key in seen:
+            return
+        seen.add(key)
+        pairs.append((int(rank), int(pa), int(pb)))
+
+    pa = _angle_point_id_from_ref(a, a_ref)
+    pb = _angle_point_id_from_ref(b, b_ref)
+    if pa in (1, 2) and pb in (1, 2):
+        add(pa, pb, -1)
+
+    try:
+        for pa in (1, 2):
+            posa = _point_position(a, pa)
+            if posa is None:
+                continue
+            for pb in (1, 2):
+                posb = _point_position(b, pb)
+                if posb is not None and _distance2(posa, posb) <= 1e-10:
+                    add(pa, pb, 0)
+    except Exception:
+        pass
+
+    for pa in (1, 2):
+        for pb in (1, 2):
+            add(pa, pb, 2)
+
+    pairs.sort()
+    return [(pa, pb) for _rank, pa, pb in pairs]
+
+
 def _add_user_angle_dimension(add_protected_constraint_safe, stats, piece_map, intent):
     """Emit a protected user angle constraint between two straight segments."""
     pair = intent.get("piece_pair")
@@ -3198,8 +3318,8 @@ def _emit_user_intents_phase2(add_protected_constraint_safe, stats, geom_meta, u
     Order:
     1. tangences
     2. colinearities
-    3. angles (diagnosed/reserved for future numeric angle emission)
-    4. lengths
+    3. angles
+    4. radii
     5. distances
     """
     piece_map = {}
@@ -3224,14 +3344,19 @@ def _emit_user_intents_phase2(add_protected_constraint_safe, stats, geom_meta, u
                     continue
 
                 emitted = False
-                candidates = [
+                candidates = []
+
+                refs_by_piece = _intent_refs_for_pair(intent, pair)
+                a_ref = refs_by_piece.get(int(pair[0]))
+                b_ref = refs_by_piece.get(int(pair[1]))
+                for pa, pb in _tangent_endpoint_pair_candidates(a, b, a_ref=a_ref, b_ref=b_ref):
+                    candidates.append(("Tangent", a["index"], pa, b["index"], pb))
+                    candidates.append(("Tangent", b["index"], pb, a["index"], pa))
+
+                candidates.extend([
                     ("Tangent", a["index"], b["index"]),
                     ("Tangent", b["index"], a["index"]),
-                ]
-
-                for pa in (1, 2):
-                    for pb in (1, 2):
-                        candidates.append(("Tangent", a["index"], pa, b["index"], pb))
+                ])
 
                 for args in candidates:
                     if add_protected_constraint_safe(*args):
@@ -3278,16 +3403,16 @@ def _emit_user_intents_phase2(add_protected_constraint_safe, stats, geom_meta, u
             except Exception:
                 pass
 
-    # 2.4 Lengths
+    # 2.4 Radii
     for intent in forced_dimension_intents(user_intents):
         try:
-            if intent.get("kind") == "length":
-                _add_user_length_dimension(add_protected_constraint_safe, stats, piece_map, intent)
+            if intent.get("kind") == "radius":
+                _add_user_radius_dimension(add_protected_constraint_safe, stats, piece_map, intent)
         except Exception as exc:
             stats["user_forced_skipped"] += 1
             stats["skipped_dimensions"] += 1
             try:
-                _log("Export phase2 user length skipped: %s" % exc)
+                _log("Export phase2 user radius skipped: %s" % exc)
             except Exception:
                 pass
 
@@ -3317,12 +3442,13 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
        - other fragments constrained collinear to the representative;
     3. H/V only on non-grouped standalone segments;
     4. arc fragments sharing the same circle support;
-       - center Coincident + Equal radius against one representative;
+       - retained/master groups: center Coincident + Equal radius;
+       - slave-only groups: Equal radius before symmetry emission;
     5. obvious tangent continuity between neighbouring line/arc or arc/arc pairs.
 
     No numeric dimensions or pattern-spacing constraints are emitted in this
-    pass.  Equal radius is relational and only used for arcs already detected
-    as fragments of the same circle support.
+    pass.  Equal radius is relational; on slave-only arc groups it prevents
+    radius/path drift while endpoint symmetries carry placement.
     """
 
     stats = {
@@ -3345,6 +3471,7 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         "hv_skipped_by_symmetry": 0,
         "hv_skipped_by_global_direction": 0,
         "primitive_tangencies": 0,
+        "arc_center_alignments": 0,
         "parallel_groups": 0,
         "parallel_links": 0,
         "global_horizontal_score": 0.0,
@@ -3393,7 +3520,7 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         "user_intent_warnings": 0,
         "user_forced_tangent": 0,
         "user_forced_colinearity": 0,
-        "user_forced_length": 0,
+        "user_forced_radius": 0,
         "user_forced_distance": 0,
         "user_forced_angle": 0,
         "user_forced_skipped": 0,
@@ -3466,16 +3593,52 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
     # neighbours: outer circular supports can be exported as non-consecutive
     # fragments while still sharing real topological endpoints.
     endpoint_pairs = list(endpoint_coincidence_pairs(geom_meta, tol_join))
+    user_tangent_piece_pairs = set()
+    try:
+        for _intent, pair in forced_piece_pair_intents_expanded(user_intents, kinds={"tangent"}):
+            user_tangent_piece_pairs.add(tuple(sorted((int(pair[0]), int(pair[1])))))
+    except Exception:
+        user_tangent_piece_pairs = set()
+
+    def endpoint_pair_piece_key(cur, nxt):
+        try:
+            return tuple(sorted((int(cur.get("piece_order")), int(nxt.get("piece_order")))))
+        except Exception:
+            return None
+
+    def endpoint_pair_has_attached_tangent(cur, cur_point, nxt, nxt_point):
+        piece_key = endpoint_pair_piece_key(cur, nxt)
+        try:
+            if "arc" not in {cur.get("type"), nxt.get("type")}:
+                return False
+            tangent = are_tangent_vectors(
+                _tangent_vec_at_endpoint(cur, cur_point),
+                _tangent_vec_at_endpoint(nxt, nxt_point),
+            )
+            if not tangent:
+                return False
+            if piece_key in user_tangent_piece_pairs:
+                return True
+            return not has_directional_user_intent(user_intents, cur, nxt)
+        except Exception:
+            return False
+
     for cur, cur_point, nxt, nxt_point in endpoint_pairs:
+        # A point-explicit Tangent in Sketcher already carries the endpoint
+        # coincidence.  Adding a separate Coincident at the same tangency makes
+        # the system redundant and can leave the solver in a non-convergent
+        # state after manual desaturation.
+        if endpoint_pair_has_attached_tangent(cur, cur_point, nxt, nxt_point):
+            continue
         add_constraint_safe("Coincident", cur["index"], cur_point, nxt["index"], nxt_point)
 
 
     # 2) User intentions, protected and emitted before calculated heuristics.
     #
-    # Geometry first: tangences -> colinearities -> angles -> lengths -> distances.
+    # Geometry first: tangences -> colinearities -> angles -> radii -> distances.
     # These constraints seed the sketch before H/V, symmetry and calculated
     # relation heuristics, and are protected from desaturation.
-    piece_map = _emit_user_intents_phase2(
+    _emit_user_intents_phase2(
         add_protected_constraint_safe,
         stats,
         geom_meta,
@@ -3490,6 +3653,7 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
     # and freeze the sketch against local construction intent.
     junctions = list(connected_junctions(geom_meta, tol_join))
     segments = [meta for meta in geom_meta if meta.get("type") == "segment"]
+    arcs = [meta for meta in geom_meta if meta.get("type") == "arc"]
     dist_tol = max(float(tol_join) * 0.25, 1e-6)
     master_diag = _diagnose_master_slave_strategy(
         geom_meta,
@@ -3530,10 +3694,10 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         except Exception:
             return False
 
-    # Points in this set are reserved from automatic symmetry.  Keep it narrow:
-    # tangency is a local construction intent tied to a junction point, while
-    # collinearity and parallelism are better protected by their own constraints
-    # and can still benefit from a small amount of symmetry to propagate edits.
+    # Historical note: tangent junction points used to be reserved from
+    # automatic symmetry.  That was too defensive: tangency expresses the local
+    # smooth join, while symmetry transports the mirrored support.  They are
+    # complementary constraints, not substitutes.
     primitive_relation_points = set()
     primitive_tangent_pairs = set()
     collinear_count = 0
@@ -3568,15 +3732,11 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
             return False
         if has_directional_user_intent(user_intents, cur, nxt):
             return False
-        if relation_is_slave_only(cur, nxt):
-            stats["master_slave_local_skipped"] += 1
-            stats["skipped_relations"] += 1
-            return False
         key = tuple(sorted((int(cur["index"]), int(nxt["index"]))))
         if key in primitive_tangent_pairs:
             reserve_tangent_cluster_points((cur, cur_point), (nxt, nxt_point))
             return False
-        if add_protected_constraint_safe("Tangent", cur["index"], nxt["index"]):
+        if add_protected_constraint_safe("Tangent", cur["index"], int(cur_point), nxt["index"], int(nxt_point)):
             primitive_tangent_pairs.add(key)
             reserve_tangent_cluster_points((cur, cur_point), (nxt, nxt_point))
             stats["primitive_tangencies"] += 1
@@ -3613,6 +3773,49 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
                 collinear_count += 1
                 emitted_for_group += 1
 
+    # Arc-center alignments: when a construction arc center already lies on the
+    # support of a segment, preserve that relative construction intent.  This is
+    # not a sketch positioning constraint; it only ties a local module to the
+    # circular support it was built from.
+    arc_center_alignment_keys = set()
+    aligned_centers = set()
+    geom_order_ids = [_meta_stable_id(meta) for meta in geom_meta]
+    for arc in arcs:
+        if not meta_is_master(arc):
+            continue
+        center = _point_position(arc, 3)
+        if center is None:
+            continue
+        center_key = (round(float(center[0]), 6), round(float(center[1]), 6))
+        if center_key in aligned_centers:
+            continue
+        candidates = []
+        for seg in segments:
+            if not meta_is_master(seg):
+                continue
+            distance = _line_distance_to_point(seg, center)
+            if distance is None or distance > max(float(tol_join), 1e-5):
+                continue
+            key = tuple(sorted((int(arc["index"]), int(seg["index"]))))
+            if key in arc_center_alignment_keys:
+                continue
+            order_distance = _order_distance_ids(geom_order_ids, _meta_stable_id(arc), _meta_stable_id(seg))
+            candidates.append((
+                0 if (meta_is_master(arc) or meta_is_master(seg)) else 1,
+                int(order_distance) if order_distance is not None else 999,
+                -float(_meta_span_weight(seg)),
+                int(seg["index"]),
+                seg,
+                key,
+            ))
+        candidates.sort()
+        for _rank, _order_distance, _span, _idx, seg, key in candidates[:1]:
+            if add_constraint_safe("PointOnObject", int(arc["index"]), 3, int(seg["index"])):
+                arc_center_alignment_keys.add(key)
+                aligned_centers.add(center_key)
+                stats["arc_center_alignments"] += 1
+                break
+
     for group in _parallel_direction_groups(segments):
         try:
             max_length = max(float(segment_length(meta)) for meta in group)
@@ -3644,6 +3847,28 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         if emitted_for_group:
             stats["parallel_groups"] += 1
 
+    # Circular support groups are detected before symmetry emission so
+    # slave-side circular support is already part of the local structure when
+    # point symmetries are added.  For slave-only groups, use Equal radius
+    # instead of center Coincident: endpoint symmetries/tangencies transport the
+    # placement, while Equal prevents the arc path from adapting independently.
+    circle_groups = group_same_circle_arcs(arcs, dist_tol=dist_tol, radius_tol=dist_tol)
+    circle_ref_by_id = {}
+    circle_count = 0
+    for group in circle_groups:
+        ref = _choose_circle_reference(group)
+        if not relation_is_slave_only(*group):
+            continue
+        stats["circle_groups"] += 1
+        stats["circle_members"] += len(group)
+        for meta in group:
+            circle_ref_by_id[id(meta)] = ref
+        for child in group:
+            if child is ref:
+                continue
+            if _add_same_circle_slave_support_to_reference(add_constraint_safe, child, ref):
+                circle_count += 1
+
     # 3) Symmetry: conservative axis passes.  Work on endpoint clusters so
     # coincident duplicates do not all receive their own symmetry constraint.
     # In Sketcher, the horizontal and vertical sketch axes are addressed with
@@ -3659,10 +3884,7 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         used_symmetry_points.add(_symmetry_point_key(meta_b, point_b))
 
     def symmetry_pair_blocked_by_primitive(meta_a, point_a, meta_b, point_b):
-        return (
-            _symmetry_point_key(meta_a, point_a) in primitive_relation_points
-            or _symmetry_point_key(meta_b, point_b) in primitive_relation_points
-        )
+        return False
 
     def symmetry_pair_available(meta_a, point_a, meta_b, point_b):
         key = _symmetry_pair_key(meta_a, point_a, meta_b, point_b)
@@ -3912,7 +4134,7 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
             except Exception:
                 return False
 
-        transported_a_endpoints = set()
+        transported_endpoints = set()
         for endpoint_a in (1, 2):
             pos_a = _point_position(meta_a, endpoint_a)
             if pos_a is None:
@@ -3932,11 +4154,15 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
                         (close_point(other_pos_a, pos_a) and close_point(other_pos_b, pos_b))
                         or (close_point(other_pos_a, pos_b) and close_point(other_pos_b, pos_a))
                     ):
-                        transported_a_endpoints.add(int(endpoint_a))
+                        transported_endpoints.add(int(endpoint_a))
                         break
-                if int(endpoint_a) in transported_a_endpoints:
+                if int(endpoint_a) in transported_endpoints:
                     break
-        return len(transported_a_endpoints) >= 2
+        # If both endpoints of the circular primitive are already transported,
+        # adding central symmetry on the arc centers overdefines the same
+        # circular support.  Keep the endpoint symmetries/tangencies; do not add
+        # a center symmetry as a substitute.
+        return len(transported_endpoints) >= 2
 
     if _arbitrary_symmetry_centers_enabled():
         # If explicit origin central symmetry is disabled, (0,0) must remain a
@@ -3948,33 +4174,7 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         ))
         stats["arbitrary_center_candidates"] = len(remaining_candidates)
         stats["arbitrary_center_pairs"] = sum(int(c.get("score", 0)) for c in remaining_candidates)
-        emitted_arc_center_distance_keys = set()
         center_support_alignment_added = False
-
-        def arc_center_distance_key(meta_a, meta_b):
-            centers = []
-            for meta in (meta_a, meta_b):
-                center = meta.get("center")
-                if center is None:
-                    return None
-                centers.append((round(float(center[0]), 6), round(float(center[1]), 6)))
-            return tuple(sorted(centers))
-
-        def add_arc_center_distance(meta_a, meta_b):
-            key = arc_center_distance_key(meta_a, meta_b)
-            if key is None or key in emitted_arc_center_distance_keys:
-                return False
-            pa = _point_position(meta_a, 3)
-            pb = _point_position(meta_b, 3)
-            if pa is None or pb is None:
-                return False
-            value = math.hypot(float(pb[0]) - float(pa[0]), float(pb[1]) - float(pa[1]))
-            if value <= max(float(tol_join), 1e-5):
-                return False
-            if add_protected_constraint_safe("Distance", meta_a["index"], 3, meta_b["index"], 3, float(value)):
-                emitted_arc_center_distance_keys.add(key)
-                return True
-            return False
 
         def segment_distance_to_point(meta, point):
             try:
@@ -4058,13 +4258,12 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
             # score.  The minimum score is therefore both the acceptance
             # threshold and the initial emission budget.
             emit_budget = len(useful_pairs) if center_is_master_dominant else max(1, int(min_sym_score))
-            center_distance_pairs = []
             filtered_pairs = []
             for pair in useful_pairs:
                 if center_pair_is_endpoint_transport_redundant(pair, useful_pairs):
-                    center_distance_pairs.append(pair)
-                else:
-                    filtered_pairs.append(pair)
+                    stats["skipped_relations"] += 1
+                    continue
+                filtered_pairs.append(pair)
             useful_pairs = filtered_pairs
             useful_pairs_to_emit = sorted(
                 useful_pairs,
@@ -4097,9 +4296,6 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
                     kept_weight += float(relevance)
                     mark_symmetry_pair(meta_a, point_a, meta_b, point_b)
 
-            for meta_a, _point_a, meta_b, _point_b, _relevance in center_distance_pairs:
-                add_arc_center_distance(meta_a, meta_b)
-
             if kept_for_center > 0:
                 stats["arbitrary_center_selected"] += 1
                 stats["arbitrary_center_selected_pairs"] += kept_for_center
@@ -4128,19 +4324,12 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
     hv_count = 0
 
     # 4) Circular support reduction: several exported arc fragments can come
-    # from the same construction circle.  Attach the smaller fragments to one
-    # representative with center Coincident + Equal radius.  This preserves the
-    # construction circle without adding numeric radius dimensions.
-    arcs = [meta for meta in geom_meta if meta.get("type") == "arc"]
-    circle_groups = group_same_circle_arcs(arcs, dist_tol=dist_tol, radius_tol=dist_tol)
-    circle_ref_by_id = {}
-    circle_count = 0
+    # from the same construction circle.  On retained/master support groups,
+    # attach fragments with center Coincident + Equal radius.  Slave-only
+    # groups were reduced before symmetry emission.
     for group in circle_groups:
         ref = _choose_circle_reference(group)
         if relation_is_slave_only(*group):
-            skipped = max(1, len(group) - 1)
-            stats["master_slave_local_skipped"] += skipped
-            stats["skipped_relations"] += skipped
             continue
         add_circle_constraint = add_protected_constraint_safe if any(meta_is_master(meta) for meta in group) else add_constraint_safe
         stats["circle_groups"] += 1
@@ -4179,11 +4368,7 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
                 stats["auto_skipped_by_user_intent"] += 1
                 stats["skipped_relations"] += 1
                 continue
-            if relation_is_slave_only(cur, nxt):
-                stats["master_slave_local_skipped"] += 1
-                stats["skipped_relations"] += 1
-                continue
-            if add_constraint_safe("Tangent", cur["index"], nxt["index"]):
+            if add_constraint_safe("Tangent", cur["index"], 2, nxt["index"], 1):
                 tangent_count += 1
 
     # Count explicit dimension intents that are currently intentionally ignored.
@@ -4198,8 +4383,10 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
     # are tracked through protected_constraint_indices.
 
     removed_constraints = _desaturate_export_constraints(sk, stats, exported_constraint_indices, protected_constraint_indices=protected_constraint_indices)
+    _synchronize_blocked_geometry_flags(sk)
 
     shape_state = _diagnose_shape_constraint_state(sk, Sketcher, geom_meta)
+    _synchronize_blocked_geometry_flags(sk)
     try:
         if shape_state.get("dof") is not None:
             stats["shape_dof"] = int(shape_state.get("dof"))
@@ -4211,7 +4398,7 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
         stats["shape_status"] = "unknown"
 
     _log(
-        "Export constraints v1.3.8 capped-arbitrary-center-pairs: endpoint_coincidences=%d symmetry_y=%d symmetry_x=%d symmetry_center=%d symmetry_y_disabled=%d symmetry_x_disabled=%d central_symmetry_disabled=%d symmetry_skipped_by_cluster=%d symmetry_skipped_by_primitive=%d traversal_junctions=%d primitive_tangencies=%d parallel_groups=%d parallel_links=%d hv=%d collinear_groups=%d collinear_members=%d collinear_links=%d circle_groups=%d circle_members=%d circle_links=%d tangencies=%d hv_skipped_by_symmetry=%d hv_skipped_by_global_direction=%d global_h_score=%.2f global_v_score=%.2f arbitrary_center_candidates=%d arbitrary_center_pairs=%d arbitrary_center_selected=%d arbitrary_center_selected_pairs=%d arbitrary_center_greedy_rounds=%d arbitrary_center_weighted_score=%.2f arbitrary_center_skipped_by_competition=%d arbitrary_centers_disabled=%d arbitrary_axis_candidates=%d arbitrary_axis_pairs=%d arbitrary_axis_selected=%d arbitrary_axis_selected_pairs=%d arbitrary_axis_greedy_rounds=%d arbitrary_axis_weighted_score=%.2f arbitrary_axis_skipped_by_competition=%d arbitrary_axis_skipped_by_global_structure=%d arbitrary_axes_disabled=%d shape_dof=%d shape_anchor_dof=%d shape_position_only=%d shape_status=%s user_intents=%d user_intent_conflicts=%d user_forced_tangent=%d user_forced_colinearity=%d user_forced_length=%d user_forced_distance=%d user_forced_angle=%d user_forced_skipped=%d auto_skipped_by_user_intent=%d desaturation_enabled=%d desaturation_solver_reported=%d desaturation_solver_removed=%d desaturation_tried=%d desaturation_removed=%d desaturation_kept=%d desaturation_skipped=%d desaturation_no_dof=%d skipped_relations=%d skipped_dimension_sources=%d added=%d failed=%d"
+        "Export constraints v1.3.8 capped-arbitrary-center-pairs: endpoint_coincidences=%d symmetry_y=%d symmetry_x=%d symmetry_center=%d symmetry_y_disabled=%d symmetry_x_disabled=%d central_symmetry_disabled=%d symmetry_skipped_by_cluster=%d symmetry_skipped_by_primitive=%d traversal_junctions=%d primitive_tangencies=%d parallel_groups=%d parallel_links=%d hv=%d collinear_groups=%d collinear_members=%d collinear_links=%d circle_groups=%d circle_members=%d circle_links=%d tangencies=%d hv_skipped_by_symmetry=%d hv_skipped_by_global_direction=%d global_h_score=%.2f global_v_score=%.2f arbitrary_center_candidates=%d arbitrary_center_pairs=%d arbitrary_center_selected=%d arbitrary_center_selected_pairs=%d arbitrary_center_greedy_rounds=%d arbitrary_center_weighted_score=%.2f arbitrary_center_skipped_by_competition=%d arbitrary_centers_disabled=%d arbitrary_axis_candidates=%d arbitrary_axis_pairs=%d arbitrary_axis_selected=%d arbitrary_axis_selected_pairs=%d arbitrary_axis_greedy_rounds=%d arbitrary_axis_weighted_score=%.2f arbitrary_axis_skipped_by_competition=%d arbitrary_axis_skipped_by_global_structure=%d arbitrary_axes_disabled=%d shape_dof=%d shape_anchor_dof=%d shape_position_only=%d shape_status=%s user_intents=%d user_intent_conflicts=%d user_forced_tangent=%d user_forced_colinearity=%d user_forced_radius=%d user_forced_distance=%d user_forced_angle=%d user_forced_skipped=%d auto_skipped_by_user_intent=%d desaturation_enabled=%d desaturation_solver_reported=%d desaturation_solver_removed=%d desaturation_tried=%d desaturation_removed=%d desaturation_kept=%d desaturation_skipped=%d desaturation_no_dof=%d skipped_relations=%d skipped_dimension_sources=%d added=%d failed=%d"
         % (
             len(endpoint_pairs),
             stats["symmetry_y"],
@@ -4263,7 +4450,7 @@ def add_path_constraints(sk, Sketcher, geom_meta, tol_join, overloads=None):
             stats["user_intent_conflicts"],
             stats["user_forced_tangent"],
             stats["user_forced_colinearity"],
-            stats["user_forced_length"],
+            stats["user_forced_radius"],
             stats["user_forced_distance"],
             stats["user_forced_angle"],
             stats["user_forced_skipped"],

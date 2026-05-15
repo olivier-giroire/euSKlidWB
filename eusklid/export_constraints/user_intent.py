@@ -12,13 +12,11 @@ exporter to:
 
 from __future__ import annotations
 
-import math
-
 
 RELATION_KINDS = {
     "tangent",
     "preserve_tangent",
-    "length",
+    "radius",
     "distance",
     "angle",
     "colinearity",
@@ -100,10 +98,13 @@ def normalize_overload(ov, ordinal=0):
         if pair is None:
             return None
         key = ("piece_pair", pair)
-    elif kind in ("length", "distance"):
+    elif kind == "radius":
+        if not pieces:
+            return None
+        key = ("piece", int(pieces[0]))
+    elif kind == "distance":
         pair = _range_pair(rng)
         if pair is None:
-            # fallback to piece pair when older overloads do not carry refs
             pair = _piece_pair(pieces)
             if pair is None:
                 return None
@@ -161,11 +162,8 @@ def _conflict(a, b):
         if "angle" in (ka, kb) and ("tangent" in (ka, kb) or "colinearity" in (ka, kb)):
             return "angle conflicts with tangent/colinearity on pieces %s" % (pair,)
 
-    # Same geometric reference pair with multiple dimensional intents.
+    # Same geometric reference pair with duplicate dimensional intents.
     if a.get("key") == b.get("key"):
-        if ka != kb and {ka, kb} <= {"length", "distance"}:
-            return "length and distance both forced on the same references"
-
         # Duplicate same-kind overload is redundant, not blocking.
         return None
 
@@ -287,5 +285,5 @@ def forced_piece_pair_intents_expanded(intents, kinds=None):
 
 def forced_dimension_intents(intents):
     for it in intents or []:
-        if it.get("kind") in {"length", "distance"}:
+        if it.get("kind") in {"radius", "distance"}:
             yield it

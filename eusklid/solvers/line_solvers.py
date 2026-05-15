@@ -1,6 +1,6 @@
 
 import math
-from ..math2d import normalize, dist2, project_point_on_line, perp
+from ..math2d import normalize, dist2, project_point_on_line
 
 def build_point_angle_series(ref, point, angles_deg):
     base = normalize(ref["direction"])
